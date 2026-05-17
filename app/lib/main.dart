@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/camera_screen.dart';
+import 'screens/live_camera_screen.dart';
 import 'screens/trace_log_screen.dart';
 import 'services/alert_service.dart';
 import 'theme/app_colors.dart';
@@ -32,7 +33,8 @@ class MyApp extends StatelessWidget {
       home: const MyHomePage(title: 'CIRO Fire Control Center'),
       routes: {
         '/traces': (context) => const TraceLogScreen(),
-        '/camera': (context) => const CameraScreen(),
+        '/camera': (context) => CameraScreen(),
+        '/live_camera': (context) => LiveCameraScreen(),
       },
     );
   }
@@ -74,7 +76,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final type = data['type'] ?? 'ALERT';
       final message = data['message'] ?? 'An alert was received.';
       final confidence = data['confidence'] ?? 0.0;
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -124,9 +126,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.appBarGradient,
-          ),
+          decoration: const BoxDecoration(gradient: AppColors.appBarGradient),
         ),
         elevation: 0,
         actions: [
@@ -139,7 +139,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Icon(
                       isConnected ? Icons.wifi : Icons.wifi_off,
-                      color: isConnected ? Colors.greenAccent : Colors.redAccent,
+                      color: isConnected
+                          ? Colors.greenAccent
+                          : Colors.redAccent,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -147,7 +149,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       isConnected ? 'WS Connected' : 'WS Disconnected',
                       style: GoogleFonts.outfit(
                         fontSize: 12,
-                        color: isConnected ? Colors.greenAccent : Colors.redAccent,
+                        color: isConnected
+                            ? Colors.greenAccent
+                            : Colors.redAccent,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -193,14 +197,23 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.dashboard_outlined, color: AppColors.textSecondary),
-              title: Text('Dashboard', style: GoogleFonts.outfit(color: AppColors.textPrimary)),
+              leading: const Icon(
+                Icons.dashboard_outlined,
+                color: AppColors.textSecondary,
+              ),
+              title: Text(
+                'Dashboard',
+                style: GoogleFonts.outfit(color: AppColors.textPrimary),
+              ),
               onTap: () {
                 Navigator.pop(context);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.history_toggle_off, color: AppColors.primary),
+              leading: const Icon(
+                Icons.history_toggle_off,
+                color: AppColors.primary,
+              ),
               title: Text(
                 'Trace Logs',
                 style: GoogleFonts.outfit(
@@ -227,6 +240,20 @@ class _MyHomePageState extends State<MyHomePage> {
                 Navigator.pushNamed(context, '/camera');
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.videocam, color: Colors.redAccent),
+              title: Text(
+                'Live Camera',
+                style: GoogleFonts.outfit(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context); // Close drawer
+                Navigator.pushNamed(context, '/live_camera');
+              },
+            ),
           ],
         ),
       ),
@@ -243,7 +270,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 color: Colors.black.withOpacity(0.3),
                 blurRadius: 15,
                 offset: const Offset(0, 10),
-              )
+              ),
             ],
           ),
           child: Column(
@@ -314,10 +341,7 @@ class _MyHomePageState extends State<MyHomePage> {
         unselectedLabelStyle: GoogleFonts.outfit(),
         currentIndex: 0,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
-            label: 'Home',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
           BottomNavigationBarItem(
             icon: Icon(Icons.history_toggle_off),
             label: 'Trace Logs',

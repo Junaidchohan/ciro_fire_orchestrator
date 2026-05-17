@@ -1,26 +1,23 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'package:google_fonts/google_fonts.dart';
-import '../theme/app_colors.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+import 'dart:ui_web' as ui_web;
 
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key});
-
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  _CameraScreenState createState() => _CameraScreenState();
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  CameraController? _controller;
-  List<CameraDescription>? _cameras;
-  bool _isCameraInitialized = false;
-  bool _isLoading = false;
-  String? _errorMessage;
-  Map<String, dynamic>? _detectionResult;
-  final ImagePicker _picker = ImagePicker();
+  Uint8List? _selectedImageBytes;
+  String _result = '';
+  bool _loading = false;
+  html.MediaStream? _mediaStream;
+  html.VideoElement? _videoElement;
+  bool _cameraReady = false;
 
   @override
   void initState() {
@@ -30,265 +27,208 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initCamera() async {
     try {
-      _cameras = await availableCameras();
-      if (_cameras != null && _cameras!.isNotEmpty) {
-        _controller = CameraController(
-          _cameras![0],
-          ResolutionPreset.medium,
-          enableAudio: false,
+      final stream = await html.window.navigator.mediaDevices?.getUserMedia({
+        'video': true,
+      });
+      if (stream != null) {
+        _mediaStream = stream;
+        _videoElement = html.VideoElement()
+          ..srcObject = stream
+          ..autoplay = true
+          ..playsInline = true
+          ..style.width = '100%'
+          ..style.height = 'auto';
+
+        ui_web.platformViewRegistry.registerViewFactory(
+          _videoElement!.tagName,
+          (int viewId) => _videoElement!,
         );
-        await _controller!.initialize();
-        if (mounted) {
-          setState(() {
-            _isCameraInitialized = true;
-          });
-        }
-      } else {
-        setState(() {
-          _errorMessage = "No cameras available on this device.";
-        });
+
+        await _videoElement!.onCanPlay.first;
+        _videoElement!.play();
+        setState(() => _cameraReady = true);
       }
     } catch (e) {
+      print('Camera init failed: $e');
+    }
+  }
+
+  void _captureFrame() {
+    if (_videoElement == null) return;
+
+    final canvas = html.CanvasElement()
+      ..width = _videoElement!.videoWidth
+      ..height = _videoElement!.videoHeight;
+
+    canvas.context2D.drawImage(_videoElement!, 0, 0);
+    final dataUri = canvas.toDataUrl('image/png');
+    final base64 = dataUri.split(',')[1];
+    final bytes = html.window.atob(base64).codeUnits.toList();
+
+    setState(() {
+      _selectedImageBytes = Uint8List.fromList(bytes);
+      _result = '';
+    });
+  }
+
+  void _pickImage() {
+    final input = html.FileUploadInputElement();
+    input.accept = 'image/*';
+    input.click();
+    input.onChange.listen((e) async {
+      final file = input.files!.first;
+      final reader = html.FileReader();
+      reader.readAsArrayBuffer(file);
+      await reader.onLoad.first;
       setState(() {
-        _errorMessage = "Camera initialization failed. Use Gallery instead.";
+        _selectedImageBytes = Uint8List.fromList(reader.result as List<int>);
+        _result = '';
       });
+    });
+  }
+
+  Future<void> _detectFire() async {
+    if (_selectedImageBytes == null) return;
+    setState(() => _loading = true);
+
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('http://localhost:8000/detect'),
+      );
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          _selectedImageBytes!,
+          filename: 'image.jpg',
+        ),
+      );
+      var response = await request.send();
+      var result = json.decode(await response.stream.bytesToString());
+
+      setState(() {
+        _result = result['detected']
+            ? '🔥 FIRE DETECTED! ${(result['confidence'] * 100).toStringAsFixed(1)}%'
+            : '✅ No fire detected';
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _mediaStream?.getTracks().forEach((track) => track.stop());
     super.dispose();
-  }
-
-  Future<void> _captureAndUpload() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-
-    try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-        _detectionResult = null;
-      });
-
-      final XFile image = await _controller!.takePicture();
-      await _uploadImage(image);
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = "Error capturing photo: $e";
-      });
-    }
-  }
-
-  Future<void> _pickFromGallery() async {
-    try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-      if (image == null) return;
-
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-        _detectionResult = null;
-      });
-
-      await _uploadImage(image);
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = "Error picking image: $e";
-      });
-    }
-  }
-
-  Future<void> _uploadImage(XFile image) async {
-    try {
-      // NOTE: Using localhost. In Android emulator use 10.0.2.2:8000
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('http://127.0.0.1:8000/detect'),
-      );
-      
-      request.files.add(await http.MultipartFile.fromPath('file', image.path));
-
-      var response = await request.send();
-      var responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200) {
-        setState(() {
-          _detectionResult = json.decode(responseData);
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _errorMessage = "Upload failed with status ${response.statusCode}";
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = "Upload failed: $e";
-        _isLoading = false;
-      });
-    }
-  }
-
-  Widget _buildDetectionResult() {
-    if (_detectionResult == null) return const SizedBox.shrink();
-
-    final detection = _detectionResult!['detection'] ?? {};
-    final bool isFire = detection['detected'] ?? false;
-    final double confidence = (detection['confidence'] ?? 0.0).toDouble();
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isFire ? AppColors.error : AppColors.success,
-          width: 2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isFire ? Icons.local_fire_department : Icons.check_circle,
-                color: isFire ? AppColors.error : AppColors.success,
-                size: 28,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isFire ? 'FIRE DETECTED' : 'ALL CLEAR',
-                style: GoogleFonts.outfit(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isFire ? AppColors.error : AppColors.success,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
-            style: GoogleFonts.outfit(
-              fontSize: 16,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          if (detection['mock'] == true)
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Text(
-                '// mock: result generated by fallback logic',
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          'Live Detection',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: AppColors.appBarGradient,
-          ),
-        ),
-        elevation: 0,
+        title: Text('Fire Detection'),
+        backgroundColor: Colors.red,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.surfaceElevated, width: 2),
-              ),
-              clipBehavior: Clip.hardEdge,
-              child: _isCameraInitialized
-                  ? CameraPreview(_controller!)
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Camera preview
+            Container(
+              height: 280,
+              width: double.infinity,
+              color: Colors.black,
+              child: _cameraReady && _videoElement != null
+                  ? HtmlElementView(viewType: _videoElement!.tagName)
+                  // This already works once ui is imported
                   : Center(
                       child: Text(
-                        _errorMessage ?? 'Initializing camera...',
-                        style: GoogleFonts.outfit(color: AppColors.textSecondary),
-                        textAlign: TextAlign.center,
+                        'Camera loading...',
+                        style: TextStyle(color: Colors.white),
                       ),
                     ),
             ),
-          ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          if (_errorMessage != null && !_isLoading)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                _errorMessage!,
-                style: GoogleFonts.outfit(color: AppColors.error),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          _buildDetectionResult(),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            SizedBox(height: 12),
+
+            // Buttons row
+            Row(
               children: [
-                ElevatedButton.icon(
-                  onPressed: _isLoading || !_isCameraInitialized ? null : _captureAndUpload,
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Capture'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _captureFrame,
+                    icon: Icon(Icons.camera),
+                    label: Text('Capture'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
                     ),
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: _isLoading ? null : _pickFromGallery,
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text('Gallery'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.surfaceElevated,
-                    foregroundColor: AppColors.textPrimary,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _pickImage,
+                    icon: Icon(Icons.photo_library),
+                    label: Text('Gallery'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            SizedBox(height: 20),
+
+            // Captured image preview
+            if (_selectedImageBytes != null)
+              Container(
+                height: 180,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.red, width: 2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
+              ),
+            SizedBox(height: 16),
+
+            // Detect button
+            ElevatedButton(
+              onPressed: _detectFire,
+              child: Text('DETECT FIRE', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                minimumSize: Size(double.infinity, 50),
+                backgroundColor: Colors.red,
+              ),
+            ),
+            if (_loading)
+              SizedBox(height: 16, child: CircularProgressIndicator()),
+            if (_result.isNotEmpty) SizedBox(height: 16),
+            if (_result.isNotEmpty)
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _result.contains('FIRE')
+                      ? Colors.red.shade100
+                      : Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _result,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
+}
+
+extension on html.VideoElement {
+  set playsInline(bool playsInline) {}
 }

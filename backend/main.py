@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Any
 import json, os, glob
 
 from routes.detect import router as detect_router
 from websocket_endpoint import router as ws_router
+from services.yolo_detector import detector
+from agents.decision_agent import agent
 
 # Initialize FastAPI Application
 app = FastAPI(
@@ -74,3 +76,37 @@ async def get_traces() -> List[Any]:
             print(f"Error reading trace file {file_path}: {e}")
 
     return all_traces
+
+
+@app.post("/detect")
+async def detect(image: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Accepts an uploaded image file, saves it temporarily, and runs the YOLO
+    fire/smoke detector and DecisionAgent pipeline.
+
+    Args:
+        image (UploadFile): The uploaded image file.
+
+    Returns:
+        Dict[str, Any]: Detection result and agent decision.
+    """
+    contents = await image.read()
+    temp_filename = image.filename or "temp_image.jpg"
+    with open(temp_filename, "wb") as f:
+        f.write(contents)
+
+    try:
+        result = detector.detect_fire(temp_filename)
+        decision = agent.decide(result)
+    finally:
+        if os.path.exists(temp_filename):
+            try:
+                os.remove(temp_filename)
+            except Exception:
+                pass
+
+    return {
+        "detected": result['detected'],
+        "confidence": result['confidence'],
+        "decision": decision
+    }

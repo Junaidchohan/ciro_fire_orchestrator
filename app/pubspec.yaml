@@ -38,11 +38,12 @@ dependencies:
   # CIRO Hackathon Core Dependencies
   http: ^1.1.0
   image_picker: ^1.0.4
-  camera: ^0.10.5
+
   google_fonts: ^5.1.0
   firebase_core: ^2.15.0
   cloud_firestore: ^4.8.0
   web_socket_channel: ^3.0.0
+  web: ^1.0.0
 
 dev_dependencies:
   flutter_test:

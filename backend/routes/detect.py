@@ -19,7 +19,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from services.yolo_detector import detect_fire
+from services.yolo_detector import detector
 from agents.decision_agent import DecisionAgent
 
 router = APIRouter(prefix="/detect", tags=["Detection"])
@@ -148,7 +148,10 @@ async def detect_endpoint(
             tmp.write(contents)
 
         # ── run YOLO detection ───────────────────────────────────────────────
-        detected, confidence, boxes = detect_fire(tmp_path)
+        result = detector.detect_fire(tmp_path)
+        detected = result["detected"]
+        confidence = result["confidence"]
+        boxes = result["boxes"]
 
     except HTTPException:
         raise
