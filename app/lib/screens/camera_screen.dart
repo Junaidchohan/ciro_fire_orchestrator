@@ -5,6 +5,7 @@ import 'dart:typed_data';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class CameraScreen extends StatefulWidget {
   @override
@@ -18,6 +19,12 @@ class _CameraScreenState extends State<CameraScreen> {
   html.MediaStream? _mediaStream;
   html.VideoElement? _videoElement;
   bool _cameraReady = false;
+
+  // Severity state from last detection
+  String? _severity;          // 'low' | 'medium' | 'high' | 'none' | null
+  String? _recommendation;    // 'monitor' | 'prepare' | 'evacuate' | 'none'
+  bool _detected = false;
+  double _confidence = 0.0;
 
   @override
   void initState() {
@@ -68,6 +75,10 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _selectedImageBytes = Uint8List.fromList(bytes);
       _result = '';
+      _severity = null;
+      _recommendation = null;
+      _detected = false;
+      _confidence = 0.0;
     });
   }
 
@@ -83,6 +94,10 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() {
         _selectedImageBytes = Uint8List.fromList(reader.result as List<int>);
         _result = '';
+        _severity = null;
+        _recommendation = null;
+        _detected = false;
+        _confidence = 0.0;
       });
     });
   }
@@ -107,8 +122,12 @@ class _CameraScreenState extends State<CameraScreen> {
       var result = json.decode(await response.stream.bytesToString());
 
       setState(() {
-        _result = result['detected']
-            ? '🔥 FIRE DETECTED! ${(result['confidence'] * 100).toStringAsFixed(1)}%'
+        _detected = result['detected'] == true;
+        _confidence = (result['confidence'] as num?)?.toDouble() ?? 0.0;
+        _severity = (result['severity'] as String?) ?? 'none';
+        _recommendation = (result['recommendation'] as String?) ?? 'none';
+        _result = _detected
+            ? '🔥 FIRE DETECTED! ${(_confidence * 100).toStringAsFixed(1)}%'
             : '✅ No fire detected';
         _loading = false;
       });
@@ -118,6 +137,131 @@ class _CameraScreenState extends State<CameraScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
+  }
+
+  /// Builds the severity badge, alert message, and action recommendation panel.
+  Widget _buildResultPanel() {
+    if (!_detected) {
+      // No fire detected – plain success card
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.shade800.withOpacity(0.3),
+          border: Border.all(color: Colors.green, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.check_circle, color: Colors.green, size: 32),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'No fire detected. Area is clear.',
+                style: TextStyle(fontSize: 15, color: Colors.green),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Severity-specific config
+    final String sev = _severity ?? 'low';
+    final Color badgeColor;
+    final Color panelBorder;
+    final String alertMsg;
+    final String action;
+    final IconData actionIcon;
+
+    switch (sev) {
+      case 'high':
+        badgeColor = Colors.red;
+        panelBorder = Colors.red;
+        alertMsg = '⚠️ CRITICAL – Fire confirmed at HIGH confidence!';
+        action = 'EVACUATE IMMEDIATELY';
+        actionIcon = Icons.directions_run;
+        break;
+      case 'medium':
+        badgeColor = Colors.orange;
+        panelBorder = Colors.orange;
+        alertMsg = '🟠 WARNING – Significant fire risk detected.';
+        action = 'PREPARE FOR EVACUATION';
+        actionIcon = Icons.warning_amber_rounded;
+        break;
+      default: // 'low'
+        badgeColor = Colors.amber;
+        panelBorder = Colors.amber;
+        alertMsg = '🟡 ALERT – Low-level fire/smoke trace detected.';
+        action = 'MONITOR CLOSELY';
+        actionIcon = Icons.visibility;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: panelBorder.withOpacity(0.12),
+        border: Border.all(color: panelBorder, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row: icon + title + badge
+          Row(
+            children: [
+              const Icon(Icons.local_fire_department, color: Colors.red, size: 28),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Fire Detected',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+              ),
+              // Severity badge chip
+              Chip(
+                label: Text(
+                  sev.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                backgroundColor: badgeColor,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Alert message
+          Text(alertMsg, style: const TextStyle(fontSize: 14)),
+          const SizedBox(height: 10),
+          // Recommended action
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: badgeColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(actionIcon, color: badgeColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Recommended: $action',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: badgeColor,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -207,20 +351,55 @@ class _CameraScreenState extends State<CameraScreen> {
             if (_loading)
               SizedBox(height: 16, child: CircularProgressIndicator()),
             if (_result.isNotEmpty) SizedBox(height: 16),
+            if (_result.isNotEmpty) _buildResultPanel(),
+            // Confidence indicator
             if (_result.isNotEmpty)
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _result.contains('FIRE')
-                      ? Colors.red.shade100
-                      : Colors.green.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _result,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
+              Column(
+                children: [
+                  SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text('Confidence: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('${(_confidence * 100).toStringAsFixed(1)}%'),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: _confidence,
+                    backgroundColor: Colors.grey[300],
+                    color: _confidence > 0.7 ? Colors.red : (_confidence > 0.4 ? Colors.orange : Colors.green),
+                    minHeight: 10,
+                  ),
+                  SizedBox(height: 8),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: _confidence),
+                    duration: Duration(milliseconds: 500),
+                    builder: (context, value, child) => Text(
+                      '${(value * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  // ── Severity badge pill (user-specified) ──────────────────
+                  if (_severity != null && _severity != 'none') ...([
+                    SizedBox(height: 12),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _severity == 'high'
+                            ? Colors.red
+                            : (_severity == 'medium' ? Colors.orange : Colors.yellow),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _severity?.toUpperCase() ?? 'UNKNOWN',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ]),
+                ],
               ),
           ],
         ),

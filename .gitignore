@@ -1,0 +1,42 @@
+# Python virtual environments – exclude to avoid GitHub large-file errors
+backend/venv/
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.so
+
+# Model weights (large binaries – add to Git LFS if needed)
+models/weights/*.pt
+models/weights/*.onnx
+
+# Logs and temp files
+logs/
+*.log
+*.tmp
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/pubspec.lock
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

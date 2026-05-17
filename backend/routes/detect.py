@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from services.yolo_detector import detector
 from agents.decision_agent import DecisionAgent
+from services.history_service import history_service
 
 router = APIRouter(prefix="/detect", tags=["Detection"])
 
@@ -151,6 +152,8 @@ async def detect_endpoint(
         result = detector.detect_fire(tmp_path)
         detected = result["detected"]
         confidence = result["confidence"]
+        severity = result["severity"]
+        recommendation = result["recommendation"]
         boxes = result["boxes"]
 
     except HTTPException:
@@ -182,8 +185,24 @@ async def detect_endpoint(
             detail=f"Decision pipeline failed: {exc}",
         ) from exc
 
+    # ── persist to detection history ─────────────────────────────────────────
+    # severity and recommendation now come directly from the YOLO result
+    history_service.save_detection(
+        image_name=file.filename or "upload",
+        detected=detected,
+        confidence=confidence,
+        severity=severity,
+    )
+
     return JSONResponse(
-        content={"detection": detection, **pipeline},
+        content={
+            "detection": detection,
+            "detected": detected,
+            "confidence": confidence,
+            "severity": severity,
+            "recommendation": recommendation,
+            **pipeline,
+        },
         status_code=200,
     )
 
