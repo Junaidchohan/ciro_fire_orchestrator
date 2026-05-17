@@ -44,6 +44,11 @@ dependencies:
   cloud_firestore: ^4.8.0
   web_socket_channel: ^3.0.0
   web: ^1.0.0
+  flutter_gen: ^5.14.1
+  fl_chart: ^1.2.0
+  intl: ^0.20.2
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

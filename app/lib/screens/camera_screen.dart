@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
-// ignore: avoid_web_libraries_in_flutter
+// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+// import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class CameraScreen extends StatefulWidget {
   @override
@@ -21,8 +21,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _cameraReady = false;
 
   // Severity state from last detection
-  String? _severity;          // 'low' | 'medium' | 'high' | 'none' | null
-  String? _recommendation;    // 'monitor' | 'prepare' | 'evacuate' | 'none'
+  String? _severity; // 'low' | 'medium' | 'high' | 'none' | null
+  String? _recommendation; // 'monitor' | 'prepare' | 'evacuate' | 'none'
   bool _detected = false;
   double _confidence = 0.0;
 
@@ -209,7 +209,11 @@ class _CameraScreenState extends State<CameraScreen> {
           // Header row: icon + title + badge
           Row(
             children: [
-              const Icon(Icons.local_fire_department, color: Colors.red, size: 28),
+              const Icon(
+                Icons.local_fire_department,
+                color: Colors.red,
+                size: 28,
+              ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -359,7 +363,10 @@ class _CameraScreenState extends State<CameraScreen> {
                   SizedBox(height: 16),
                   Row(
                     children: [
-                      Text('Confidence: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'Confidence: ',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       Text('${(_confidence * 100).toStringAsFixed(1)}%'),
                     ],
                   ),
@@ -367,7 +374,9 @@ class _CameraScreenState extends State<CameraScreen> {
                   LinearProgressIndicator(
                     value: _confidence,
                     backgroundColor: Colors.grey[300],
-                    color: _confidence > 0.7 ? Colors.red : (_confidence > 0.4 ? Colors.orange : Colors.green),
+                    color: _confidence > 0.7
+                        ? Colors.red
+                        : (_confidence > 0.4 ? Colors.orange : Colors.green),
                     minHeight: 10,
                   ),
                   SizedBox(height: 8),
@@ -376,29 +385,38 @@ class _CameraScreenState extends State<CameraScreen> {
                     duration: Duration(milliseconds: 500),
                     builder: (context, value, child) => Text(
                       '${(value * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   // ── Severity badge pill (user-specified) ──────────────────
-                  if (_severity != null && _severity != 'none') ...([
-                    SizedBox(height: 12),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _severity == 'high'
-                            ? Colors.red
-                            : (_severity == 'medium' ? Colors.orange : Colors.yellow),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _severity?.toUpperCase() ?? 'UNKNOWN',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                  if (_severity != null && _severity != 'none')
+                    ...([
+                      SizedBox(height: 12),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _severity == 'high'
+                              ? Colors.red
+                              : (_severity == 'medium'
+                                    ? Colors.orange
+                                    : Colors.yellow),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _severity?.toUpperCase() ?? 'UNKNOWN',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                  ]),
+                    ]),
                 ],
               ),
           ],
