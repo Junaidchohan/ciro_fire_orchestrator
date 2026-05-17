@@ -1,0 +1,100 @@
+[
+  {
+    "agent_name": "YOLODetector",
+    "step_type": "OBSERVE",
+    "reasoning": "YOLO detects fire. The deep learning vision pipeline processed the real-time thermal camera input, identifying an active combustion core with high pixel intensity.",
+    "confidence_before": 0.65,
+    "confidence_after": 0.87,
+    "timestamp": "2026-05-17T22:30:00.000Z",
+    "inputs": {
+      "stream_id": "CCTV_ZONE_3_NORTH",
+      "model_version": "YOLOv8x-Fire"
+    },
+    "output": {
+      "fire_detected": true,
+      "bounding_boxes": [
+        {
+          "x_min": 120,
+          "y_min": 240,
+          "x_max": 280,
+          "y_max": 390,
+          "label": "fire",
+          "confidence": 0.87
+        }
+      ]
+    }
+  },
+  {
+    "agent_name": "RiskAnalystAgent",
+    "step_type": "ANALYZE",
+    "reasoning": "Risk assessment high. Fused YOLO visual evidence with meteorological sensors showing dry wood fuel, 15% humidity, and 28 km/h wind gusts directly heading towards residential perimeter.",
+    "confidence_before": 0.70,
+    "confidence_after": 0.92,
+    "timestamp": "2026-05-17T22:31:30.000Z",
+    "inputs": {
+      "visual_fire_confidence": 0.87,
+      "wind_speed_kmh": 28,
+      "humidity_percent": 15,
+      "zone": "Zone 3"
+    },
+    "output": {
+      "risk_level": "CRITICAL",
+      "threat_index": 0.92,
+      "evacuation_urgency": "IMMEDIATE"
+    }
+  },
+  {
+    "agent_name": "DecisionOrchestrator",
+    "step_type": "DECIDE",
+    "reasoning": "Evacuate zone 3. Based on high-severity fire propagation model pointing to Zone 3 containment breaches within 25 minutes, immediate population safety evacuation is the optimal action.",
+    "confidence_before": 0.80,
+    "confidence_after": 0.95,
+    "timestamp": "2026-05-17T22:32:45.000Z",
+    "inputs": {
+      "threat_index": 0.92,
+      "evacuation_urgency": "IMMEDIATE",
+      "population_density": "MEDIUM_HIGH"
+    },
+    "output": {
+      "recommended_action": "EVACUATE",
+      "target_zone": "Zone 3",
+      "safe_haven": "Zone 5 Community Shelter"
+    }
+  },
+  {
+    "agent_name": "AlertingAgent",
+    "step_type": "ACT",
+    "reasoning": "Send alert to all devices. Broadcasted mass-notification push payloads to all active cellular IDs, digital road signs, and warning sirens registered within Zone 3 boundary coordinates.",
+    "confidence_before": 0.75,
+    "confidence_after": 0.90,
+    "timestamp": "2026-05-17T22:33:15.000Z",
+    "inputs": {
+      "action": "EVACUATE",
+      "target_zone": "Zone 3",
+      "broadcast_mediums": ["cellular_broadcast", "sirens", "digital_signage"]
+    },
+    "output": {
+      "alerts_dispatched": true,
+      "delivery_success_count": 1420,
+      "status": "COMPLETED"
+    }
+  },
+  {
+    "agent_name": "MonitoringAgent",
+    "step_type": "EVALUATE",
+    "reasoning": "Evacuation confirmed. Fused live GPS navigation traffic congestion telemetry with public safety check-ins showing 98% of Zone 3 residents cleared through safety checkpoints.",
+    "confidence_before": 0.85,
+    "confidence_after": 0.96,
+    "timestamp": "2026-05-17T22:38:00.000Z",
+    "inputs": {
+      "expected_evacuees": 1450,
+      "cleared_checkpoints": 1421,
+      "active_first_responders": 12
+    },
+    "output": {
+      "evacuation_percentage": 98.0,
+      "zone_clear_status": true,
+      "hazard_containment_predicted_time_mins": 120
+    }
+  }
+]

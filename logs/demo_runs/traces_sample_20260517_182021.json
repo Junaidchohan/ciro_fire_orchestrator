@@ -1,0 +1,129 @@
+[
+  {
+    "agent_name": "yolo_agent",
+    "step_type": "OBSERVE",
+    "reasoning": "Scanning real-time forest watch CCTV feeds. Detected heat signatures and high smoke column index in Sector 4B.",
+    "confidence_before": 0.55,
+    "confidence_after": 0.89,
+    "inputs": {
+      "camera_id": "CCTV-Sector-4B",
+      "stream_active": true
+    },
+    "output": {
+      "anomaly_detected": true,
+      "bounding_boxes": [
+        {
+          "class": "smoke",
+          "confidence": 0.89
+        }
+      ]
+    },
+    "tool_calls": [],
+    "duration_ms": 1450.0,
+    "timestamp": "2026-05-17T18:05:21.593405"
+  },
+  {
+    "agent_name": "fire_agent",
+    "step_type": "ANALYZE",
+    "reasoning": "Fusing YOLO detection with satellite thermal sensors and local weather station data. Confirmed low-humidity high-wind environment.",
+    "confidence_before": 0.8,
+    "confidence_after": 0.95,
+    "inputs": {
+      "cctv_smoke_detected": true,
+      "satellite_temp_c": 312.5,
+      "wind_speed_kmh": 22.0
+    },
+    "output": {
+      "fire_risk_score": 0.95,
+      "confirmed_fire": true
+    },
+    "tool_calls": [],
+    "duration_ms": 820.0,
+    "timestamp": "2026-05-17T18:06:51.593405"
+  },
+  {
+    "agent_name": "decision_agent",
+    "step_type": "ANALYZE",
+    "reasoning": "Classifying fire severity and threat vectors. Identified a nearby high-density urban fringe within 2 kilometers.",
+    "confidence_before": 0.7,
+    "confidence_after": 0.91,
+    "inputs": {
+      "confirmed_fire": true,
+      "fuel_type": "pine_dry",
+      "proximity_to_assets_km": 1.8
+    },
+    "output": {
+      "threat_level": "CRITICAL",
+      "evacuation_recommended": true
+    },
+    "tool_calls": [],
+    "duration_ms": 640.0,
+    "timestamp": "2026-05-17T18:08:21.593405"
+  },
+  {
+    "agent_name": "decision_agent",
+    "step_type": "DECIDE",
+    "reasoning": "Determining response resources and optimal deployment. Selected water-bombing helicopter and local wildland taskforce.",
+    "confidence_before": 0.75,
+    "confidence_after": 0.94,
+    "inputs": {
+      "threat_level": "CRITICAL",
+      "available_assets": [
+        "station_3_engine",
+        "chopper_1",
+        "station_5_engine"
+      ]
+    },
+    "output": {
+      "selected_action": "DISPATCH",
+      "assets_to_dispatch": [
+        "chopper_1",
+        "station_3_engine"
+      ]
+    },
+    "tool_calls": [],
+    "duration_ms": 1100.0,
+    "timestamp": "2026-05-17T18:09:21.593405"
+  },
+  {
+    "agent_name": "decision_agent",
+    "step_type": "ACT",
+    "reasoning": "Transmitting dispatch orders to the emergency responder dispatch API and triggering local warnings.",
+    "confidence_before": 0.9,
+    "confidence_after": 0.98,
+    "inputs": {
+      "dispatch_payload": {
+        "assets": [
+          "chopper_1",
+          "station_3_engine"
+        ],
+        "destination": "Sector 4B"
+      }
+    },
+    "output": {
+      "dispatch_status": "SENT",
+      "incident_id": "INC-2026-0042"
+    },
+    "tool_calls": [],
+    "duration_ms": 450.0,
+    "timestamp": "2026-05-17T18:09:51.593405"
+  },
+  {
+    "agent_name": "decision_agent",
+    "step_type": "EVALUATE",
+    "reasoning": "Running predictive forest fire expansion model to project spread over the next two hours with resource suppression.",
+    "confidence_before": 0.85,
+    "confidence_after": 0.97,
+    "inputs": {
+      "incident_id": "INC-2026-0042",
+      "active_suppression": true
+    },
+    "output": {
+      "containment_probability": 0.92,
+      "estimated_control_time_hours": 3.5
+    },
+    "tool_calls": [],
+    "duration_ms": 2300.0,
+    "timestamp": "2026-05-17T18:11:21.593405"
+  }
+]

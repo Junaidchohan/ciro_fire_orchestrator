@@ -1,0 +1,185 @@
+[
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "OBSERVE",
+    "reasoning": "Received detection payload. Fire DETECTED with confidence 92.00%. 2 bounding box(es) found. Classes: ['smoke', 'fire']. Internal confidence updated 0.500 -> 0.776.",
+    "inputs": {
+      "detection_results": {
+        "detected": true,
+        "confidence": 0.92,
+        "boxes": [
+          {
+            "x1": 50,
+            "y1": 50,
+            "x2": 200,
+            "y2": 200,
+            "class": "fire",
+            "confidence": 0.92
+          },
+          {
+            "x1": 300,
+            "y1": 300,
+            "x2": 500,
+            "y2": 450,
+            "class": "smoke",
+            "confidence": 0.85
+          }
+        ]
+      }
+    },
+    "output": {
+      "fire_detected": true,
+      "detection_confidence": 0.92,
+      "box_count": 2,
+      "classes_seen": [
+        "smoke",
+        "fire"
+      ],
+      "timestamp": "2026-05-17T20:30:27.091"
+    },
+    "confidence_before": 0.5,
+    "confidence_after": 0.776,
+    "tool_calls": [],
+    "duration_ms": 0,
+    "timestamp": "20260517_203027"
+  },
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "ANALYZE",
+    "reasoning": "Risk classified as 'high' based on detection confidence 92.00% and 2 active detection(s). Affected zones: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: YES.",
+    "inputs": {
+      "situation_summary": {
+        "fire_detected": true,
+        "detection_confidence": 0.92,
+        "box_count": 2,
+        "classes_seen": [
+          "smoke",
+          "fire"
+        ],
+        "timestamp": "2026-05-17T20:30:27.091",
+        "boxes": [
+          {
+            "x1": 50,
+            "y1": 50,
+            "x2": 200,
+            "y2": 200,
+            "class": "fire",
+            "confidence": 0.92
+          },
+          {
+            "x1": 300,
+            "y1": 300,
+            "x2": 500,
+            "y2": 450,
+            "class": "smoke",
+            "confidence": 0.85
+          }
+        ]
+      }
+    },
+    "output": {
+      "risk_level": "high",
+      "affected_zones": [
+        "Zone A (North Wing)",
+        "Zone E (Central Hub)"
+      ],
+      "spread_risk": true,
+      "analysis_notes": "Risk classified as 'high' based on detection confidence 92.00% and 2 active detection(s). Affected zones: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: YES."
+    },
+    "confidence_before": 0.776,
+    "confidence_after": 0.8260000000000001,
+    "tool_calls": [],
+    "duration_ms": 0,
+    "timestamp": "20260517_203027"
+  },
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "DECIDE",
+    "reasoning": "Action 'EVACUATE' selected (priority 1). Risk level: HIGH. Zones affected: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: HIGH - immediate containment required.",
+    "inputs": {
+      "risk_analysis": {
+        "risk_level": "high",
+        "affected_zones": [
+          "Zone A (North Wing)",
+          "Zone E (Central Hub)"
+        ],
+        "spread_risk": true,
+        "analysis_notes": "Risk classified as 'high' based on detection confidence 92.00% and 2 active detection(s). Affected zones: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: YES."
+      }
+    },
+    "output": {
+      "action": "EVACUATE",
+      "priority": 1,
+      "recommendation": "Action 'EVACUATE' selected (priority 1). Risk level: HIGH. Zones affected: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: HIGH - immediate containment required.",
+      "affected_zones": [
+        "Zone A (North Wing)",
+        "Zone E (Central Hub)"
+      ]
+    },
+    "confidence_before": 0.8260000000000001,
+    "confidence_after": 0.8460000000000001,
+    "tool_calls": [],
+    "duration_ms": 0,
+    "timestamp": "20260517_203027"
+  },
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "ACT",
+    "reasoning": "Command 'DISPATCH_EVACUATE' dispatched to frontend. Priority 1, zones: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Agent confidence at dispatch: 0.846.",
+    "inputs": {
+      "decision": {
+        "action": "EVACUATE",
+        "priority": 1,
+        "recommendation": "Action 'EVACUATE' selected (priority 1). Risk level: HIGH. Zones affected: ['Zone A (North Wing)', 'Zone E (Central Hub)']. Spread risk: HIGH - immediate containment required.",
+        "affected_zones": [
+          "Zone A (North Wing)",
+          "Zone E (Central Hub)"
+        ]
+      }
+    },
+    "output": {
+      "command": "DISPATCH_EVACUATE",
+      "action": "EVACUATE",
+      "priority": 1,
+      "zones": [
+        "Zone A (North Wing)",
+        "Zone E (Central Hub)"
+      ],
+      "message": "EVACUATE IMMEDIATELY - Fire confirmed. All personnel must leave affected zones now.",
+      "confidence": 0.846,
+      "issued_at": "2026-05-17T20:30:27.162"
+    },
+    "confidence_before": 0.8460000000000001,
+    "confidence_after": 0.8460000000000001,
+    "tool_calls": [
+      {
+        "tool": "FrontendDispatch",
+        "command": "DISPATCH_EVACUATE"
+      }
+    ],
+    "duration_ms": 0,
+    "timestamp": "20260517_203027"
+  },
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "EVALUATE",
+    "reasoning": "Alert confirmed. Confidence reinforced. Resolution: Fire truck arrived, confirmed blaze",
+    "inputs": {
+      "outcome": {
+        "confirmed": true,
+        "resolution": "Fire truck arrived, confirmed blaze"
+      }
+    },
+    "output": {
+      "confidence_before": 0.846,
+      "confidence_after": 0.946,
+      "verdict": "CORRECT",
+      "notes": "Alert confirmed. Confidence reinforced. Resolution: Fire truck arrived, confirmed blaze"
+    },
+    "confidence_before": 0.8460000000000001,
+    "confidence_after": 0.9460000000000001,
+    "tool_calls": [],
+    "duration_ms": 0,
+    "timestamp": "20260517_203027"
+  }
+]

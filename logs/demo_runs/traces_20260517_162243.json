@@ -1,0 +1,14 @@
+[
+  {
+    "agent_name": "FusionAgent",
+    "step_type": "fusion",
+    "reasoning": "Test reasoning",
+    "confidence_before": 0.5,
+    "confidence_after": 0.8,
+    "inputs": {},
+    "output": null,
+    "tool_calls": [],
+    "duration_ms": 0.0,
+    "timestamp": "2026-05-17T16:22:43.761718"
+  }
+]

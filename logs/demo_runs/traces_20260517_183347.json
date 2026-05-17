@@ -1,0 +1,18 @@
+[
+  {
+    "agent_name": "FusionAgent",
+    "step_type": "OBSERVE",
+    "reasoning": "Checking local temperature readings",
+    "inputs": {
+      "temp": 42
+    },
+    "output": {
+      "incident": true
+    },
+    "confidence_before": 0.3,
+    "confidence_after": 0.95,
+    "tool_calls": [],
+    "duration_ms": 120,
+    "timestamp": "20260517_183347"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "agent_name": "DecisionAgent",
+    "step_type": "OBSERVE",
+    "reasoning": "Received detection payload. Fire DETECTED with confidence 87.00%. 0 bounding box(es) found. Classes: ['none']. Internal confidence updated 0.500 → 0.761.",
+    "inputs": {
+      "detection_results": {
+        "detected": true,
+        "confidence": 0.87,
+        "boxes": []
+      }
+    },
+    "output": {
+      "fire_detected": true,
+      "detection_confidence": 0.87,
+      "box_count": 0,
+      "classes_seen": [],
+      "timestamp": "2026-05-17T20:18:48.012"
+    },
+    "confidence_before": 0.5,
+    "confidence_after": 0.761,
+    "tool_calls": [],
+    "duration_ms": 0,
+    "timestamp": "20260517_201848"
+  }
+]

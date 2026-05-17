@@ -1,0 +1,14 @@
+[
+  {
+    "agent_name": "TestAgent",
+    "step_type": "OBSERVE",
+    "reasoning": "Testing",
+    "confidence_before": 0.5,
+    "confidence_after": 0.8,
+    "inputs": {},
+    "output": "success",
+    "tool_calls": [],
+    "duration_ms": 100,
+    "timestamp": 1779020384.8770933
+  }
+]

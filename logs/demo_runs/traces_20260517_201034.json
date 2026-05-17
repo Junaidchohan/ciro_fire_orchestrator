@@ -1,0 +1,28 @@
+[
+  {
+    "agent_name": "YOLODetector",
+    "step_type": "OBSERVE",
+    "reasoning": "[MOCK] Analysed image 'test_image.jpg' for fire/smoke. No fire detected with confidence 11.32%. Found 0 bounding box(es). Model mode: mock (weights absent).",
+    "inputs": {
+      "image_path": "test_image.jpg",
+      "model_available": false
+    },
+    "output": {
+      "fire_detected": false,
+      "confidence": 0.1132,
+      "boxes": [],
+      "mock": true
+    },
+    "confidence_before": 0.5,
+    "confidence_after": 0.8868,
+    "tool_calls": [
+      {
+        "tool": "YOLOv8",
+        "model": "best.pt",
+        "device": "cpu"
+      }
+    ],
+    "duration_ms": 0,
+    "timestamp": "20260517_201034"
+  }
+]
