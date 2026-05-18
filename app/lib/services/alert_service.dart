@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../theme/app_colors.dart';
+import '../config/api_config.dart';
 
 class AlertService {
   static final AlertService _instance = AlertService._internal();
@@ -17,7 +18,7 @@ class AlertService {
     if (isConnected.value) return;
     try {
       _channel = WebSocketChannel.connect(
-        Uri.parse('ws://localhost:8000/ws'),
+        Uri.parse(ApiConfig.wsUrl),
       );
       
       isConnected.value = true;

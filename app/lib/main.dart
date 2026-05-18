@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/camera_screen.dart';
-import 'screens/live_camera_screen.dart';
-import 'screens/trace_log_screen.dart';
+import 'screens/monitor_screen.dart';
+import 'screens/incidents_screen.dart';
+import 'screens/agent_screen.dart';
 import 'services/alert_service.dart';
 import 'theme/app_colors.dart';
 
@@ -13,7 +13,6 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -21,51 +20,36 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: AppColors.background,
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
-          brightness: Brightness.dark,
+          brightness: Brightness.light,
           surface: AppColors.surface,
         ),
-        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
+        textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme),
       ),
-      home: const MyHomePage(title: 'CIRO Fire Control Center'),
-      routes: {
-        '/traces': (context) => const TraceLogScreen(),
-        '/camera': (context) => CameraScreen(),
-        '/live_camera': (context) => LiveCameraScreen(),
-      },
+      home: const MainShell(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<MainShell> createState() => _MainShellState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _MainShellState extends State<MainShell> {
+  int _currentIndex = 0;
+  bool _testModeEnabled = false;
 
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
+  final List<Widget> _screens = [
+    const MonitorScreen(),
+    const IncidentsScreen(),
+    const AgentScreen(),
+  ];
 
   @override
   void initState() {
@@ -107,24 +91,47 @@ class _MyHomePageState extends State<MyHomePage> {
     alertService.connect();
   }
 
+  void _simulateEvent() {
+    if (!_testModeEnabled) return;
+    // For test mode, you can trigger a local mock or a real API call if desired.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Test Mode: Simulated event triggered', style: GoogleFonts.outfit()),
+        backgroundColor: AppColors.primary,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    // In our new design, each screen handles its own AppBar except for the Drawer icon.
+    // However, for consistency and global drawer, it's easier to let the Scaffold here hold the AppBar if we want, 
+    // OR just use the body and pass the Drawer to the nested Scaffolds.
+    // Wait, since we are using BottomNavigationBar, it's best to let each screen be a widget, 
+    // but then they can't open this Scaffold's drawer easily without a GlobalKey.
+    // Since MonitorScreen doesn't have an AppBar in my rewrite (it just has SafeArea), we can put a floating hamburger or an AppBar here.
+    // Let's provide a global AppBar here to house the hamburger menu, and remove AppBars from the child screens.
+    // Wait, the children screens already have AppBars (except MonitorScreen which uses a top banner).
+    // Let's use an AppBar here for the drawer, but hide it if we want custom UI, OR just use an AppBar globally.
+
+    // Let's use a global AppBar to make things clean.
+    final List<String> _titles = [
+      'CIRO Operations',
+      'Incident Logs',
+      'Agent Traces',
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          widget.title,
+          _titles[_currentIndex],
           style: GoogleFonts.outfit(
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: Colors.white,
           ),
         ),
+        iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: const BoxDecoration(gradient: AppColors.appBarGradient),
         ),
@@ -139,21 +146,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Icon(
                       isConnected ? Icons.wifi : Icons.wifi_off,
-                      color: isConnected
-                          ? Colors.greenAccent
-                          : Colors.redAccent,
+                      color: isConnected ? Colors.greenAccent : Colors.white70,
                       size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isConnected ? 'WS Connected' : 'WS Disconnected',
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        color: isConnected
-                            ? Colors.greenAccent
-                            : Colors.redAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
                     ),
                   ],
                 ),
@@ -163,203 +157,107 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
       drawer: Drawer(
-        backgroundColor: AppColors.surfaceElevated,
-        child: ListView(
-          padding: EdgeInsets.zero,
+        backgroundColor: AppColors.surface,
+        child: Column(
           children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(
-                gradient: AppColors.fireAlertGradient,
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(gradient: AppColors.cyberGradient),
+              accountName: Text(
+                'Commander Steve Musk',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.white),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
+              accountEmail: Text(
+                'commander@ciro.ai',
+                style: GoogleFonts.outfit(color: Colors.white70),
+              ),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, color: AppColors.primary, size: 40),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
                 children: [
-                  Text(
-                    'CIRO SYSTEM',
-                    style: GoogleFonts.outfit(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                    ),
+                  ListTile(
+                    leading: const Icon(Icons.settings, color: AppColors.textSecondary),
+                    title: Text('Settings', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                    onTap: () {},
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Fire Crisis Response Orchestrator',
-                    style: GoogleFonts.outfit(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  SwitchListTile(
+                    title: Text('Test Mode', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
+                    subtitle: Text('Enable simulated events', style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 12)),
+                    activeColor: AppColors.primary,
+                    value: _testModeEnabled,
+                    onChanged: (val) {
+                      setState(() {
+                        _testModeEnabled = val;
+                      });
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline, color: AppColors.textSecondary),
+                    title: Text('About CIRO', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                    onTap: () {},
                   ),
                 ],
               ),
             ),
+            const Divider(),
             ListTile(
-              leading: const Icon(
-                Icons.dashboard_outlined,
-                color: AppColors.textSecondary,
-              ),
-              title: Text(
-                'Dashboard',
-                style: GoogleFonts.outfit(color: AppColors.textPrimary),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-              },
+              leading: const Icon(Icons.logout, color: AppColors.error),
+              title: Text('Logout', style: GoogleFonts.outfit(color: AppColors.error, fontWeight: FontWeight.bold)),
+              onTap: () {},
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.history_toggle_off,
-                color: AppColors.primary,
-              ),
-              title: Text(
-                'Trace Logs',
-                style: GoogleFonts.outfit(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context); // Close drawer
-                Navigator.pushNamed(context, '/traces');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt, color: AppColors.secondary),
-              title: Text(
-                'Live Detection',
-                style: GoogleFonts.outfit(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context); // Close drawer
-                Navigator.pushNamed(context, '/camera');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.videocam, color: Colors.redAccent),
-              title: Text(
-                'Live Camera',
-                style: GoogleFonts.outfit(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(context); // Close drawer
-                Navigator.pushNamed(context, '/live_camera');
-              },
-            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: AppColors.cardGradient,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.surfaceElevated, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 15,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.local_fire_department,
-                  size: 48,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Incident Multi-Agent Dispatcher',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'System active and monitoring environment. Pressing the FAB simulates a local fire trigger event.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Divider(color: AppColors.surfaceElevated, height: 1),
-              const SizedBox(height: 24),
-              Text(
-                'Simulated Event Triggers',
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.1,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '$_counter',
-                style: GoogleFonts.outfit(
-                  fontSize: 64,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
       ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: AppColors.surface,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textMuted,
         selectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),
-        unselectedLabelStyle: GoogleFonts.outfit(),
-        currentIndex: 0,
+        unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.normal),
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        elevation: 10,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history_toggle_off),
-            label: 'Trace Logs',
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: 'Monitor',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history_outlined),
+            activeIcon: Icon(Icons.history),
+            label: 'Incidents',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.memory_outlined),
+            activeIcon: Icon(Icons.memory),
+            label: 'Agent',
           ),
         ],
         onTap: (index) {
-          if (index == 1) {
-            Navigator.pushNamed(context, '/traces');
-          }
+          setState(() {
+            _currentIndex = index;
+          });
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _testModeEnabled
+          ? FloatingActionButton(
+              onPressed: _simulateEvent,
+              backgroundColor: AppColors.warning,
+              child: const Icon(Icons.bug_report, color: Colors.white),
+              tooltip: 'Simulate Event',
+            )
+          : null,
     );
   }
 }

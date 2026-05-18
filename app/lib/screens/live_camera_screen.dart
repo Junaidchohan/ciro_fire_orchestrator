@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../config/api_config.dart';
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
@@ -74,7 +75,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     setState(() => _loading = true);
     
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('http://localhost:8000/detect'));
+      var request = http.MultipartRequest('POST', Uri.parse(ApiConfig.detect));
       request.files.add(http.MultipartFile.fromBytes('image', _capturedImage!, filename: 'capture.jpg'));
       var response = await request.send();
       var result = json.decode(await response.stream.bytesToString());

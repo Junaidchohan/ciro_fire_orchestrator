@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
+import '../config/api_config.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
@@ -110,7 +111,7 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse('http://localhost:8000/detect'),
+        Uri.parse(ApiConfig.detect),
       );
       request.files.add(
         http.MultipartFile.fromBytes(

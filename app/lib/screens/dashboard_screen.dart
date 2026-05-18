@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../config/api_config.dart';
 
 class DashboardScreen extends StatefulWidget {
   @override
@@ -21,7 +22,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> loadStats() async {
     setState(() => loading = true);
     try {
-      var response = await http.get(Uri.parse('http://localhost:8000/stats'));
+      var response = await http.get(Uri.parse('${ApiConfig.baseUrl}/stats'));
       if (response.statusCode == 200) {
         setState(() => stats = json.decode(response.body));
       }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../theme/app_colors.dart';
+import '../config/api_config.dart';
 
 // mock: trace model mapped from Firestore/FastAPI JSON trace
 class TraceLog {
@@ -68,7 +69,7 @@ class _TraceLogScreenState extends State<TraceLogScreen> {
 
     try {
       // NOTE: Using localhost. In Android emulator use 10.0.2.2:8001
-      final response = await http.get(Uri.parse('http://127.0.0.1:8001/traces'));
+      final response = await http.get(Uri.parse(ApiConfig.traces));
       
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);

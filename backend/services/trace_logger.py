@@ -30,13 +30,13 @@ class TraceLogger:
         agent_name: str,
         step_type: str,
         reasoning: str,
-        inputs: Dict[str, Any],
-        output: Dict[str, Any],
         confidence_before: float,
         confidence_after: float,
-        tool_calls: List[Dict[str, Any]],
-        duration_ms: int,
-        timestamp: Optional[str] = None
+        inputs: Optional[Dict[str, Any]] = None,
+        output: Optional[Dict[str, Any]] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        duration_ms: int = 0,
+        timestamp: Optional[str] = None,
     ) -> None:
         """
         Appends an agent decision trace entry to the traces JSON file.
@@ -62,13 +62,13 @@ class TraceLogger:
             "agent_name": agent_name,
             "step_type": step_type,
             "reasoning": reasoning,
-            "inputs": inputs,
-            "output": output,
+            "inputs": inputs or {},
+            "output": output or {},
             "confidence_before": confidence_before,
             "confidence_after": confidence_after,
-            "tool_calls": tool_calls,
+            "tool_calls": tool_calls or [],
             "duration_ms": duration_ms,
-            "timestamp": actual_timestamp
+            "timestamp": actual_timestamp,
         }
 
         # Sanitize timestamp for filename usage (replace ':' with '-' to support Windows OS)

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../theme/app_colors.dart';
+import '../config/api_config.dart';
 
 /// HistoryScreen – displays all past fire detection records fetched from
 /// the backend GET /history endpoint, sorted newest first.
@@ -33,7 +34,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
     try {
       final response = await http.get(
-        Uri.parse('http://localhost:8000/history'),
+        Uri.parse(ApiConfig.history),
       );
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -111,7 +112,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void _showImageDetail(BuildContext context, Map<String, dynamic> record) {
     final imageName = record['image_name'] as String? ?? '';
     // The backend serves saved images under /images/<filename> (mock: static file)
-    final imageUrl = 'http://localhost:8000/images/$imageName';
+    final imageUrl = '${ApiConfig.baseUrl}/images/$imageName';
     final detected = record['detected'] as bool? ?? false;
     final confidence = ((record['confidence'] as num? ?? 0.0) * 100)
         .toStringAsFixed(1);
