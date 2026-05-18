@@ -25,6 +25,7 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _recommendation; // 'monitor' | 'prepare' | 'evacuate' | 'none'
   bool _detected = false;
   double _confidence = 0.0;
+  String _agentReasoning = ''; // JSON-encoded agent_trace from backend
 
   @override
   void initState() {
@@ -129,6 +130,7 @@ class _CameraScreenState extends State<CameraScreen> {
         _result = _detected
             ? '🔥 FIRE DETECTED! ${(_confidence * 100).toStringAsFixed(1)}%'
             : '✅ No fire detected';
+        _agentReasoning = json.encode(result['agent_trace']);
         _loading = false;
       });
     } catch (e) {
