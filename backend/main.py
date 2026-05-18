@@ -1,14 +1,26 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, List, Any
+from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
 import asyncio, json, os, glob
 
 from routes.detect import router as detect_router
+from routes.allocate import router as allocate_router
+from routes.signals import router as signals_router
 from websocket_endpoint import router as ws_router
 from services.yolo_detector import detector
-from agents.decision_agent import agent
+from services.action_simulator import simulator
+from agents.decision_agent import agent as decision_agent
 from agents.orchestrator import orchestrator
+
+
+# ── request schemas ───────────────────────────────────────────────────────────
+class SimulateRequest(BaseModel):
+    """Request body schema for the /simulate endpoint."""
+    crisis_type: str
+    allocated_resources: Dict[str, Any]
+    location: Optional[str] = "Unknown"
 
 
 # ── lifespan: auto-start orchestrator on startup ──────────────────────────────
@@ -22,56 +34,25 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI Application
 app = FastAPI(
-    title="CIRO Fire Orchestrator API",
-    description="Backend coordinator for the Fire Crisis Response System",
-    version="1.0.0",
+    title="CIRO Multi-Hazard Crisis Orchestrator API",
+    description="Backend coordinator for Fire, Flood & Heatwave Crisis Response",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
 # Configure Cross-Origin Resource Sharing (CORS)
-# Support local development and Render deployment URLs.
-allowed_origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://localhost:10000",
-    "http://127.0.0.1",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:10000",
-]
-
-# Read frontend/Render URLs from environment variables
-env_origins = os.environ.get("ALLOWED_ORIGINS")
-if env_origins:
-    allowed_origins.extend([origin.strip() for origin in env_origins.split(",") if origin.strip()])
-
-frontend_url = os.environ.get("FRONTEND_URL")
-if frontend_url:
-    allowed_origins.append(frontend_url.strip())
-
-# Support Render external URL if defined
-render_url = os.environ.get("RENDER_EXTERNAL_URL")
-if render_url:
-    allowed_origins.append(render_url.strip())
-
-# Deduplicate origins
-allowed_origins = list(set(allowed_origins))
-
-# Fallback to wildcard if allowed_origins is empty or in local dev
-if not allowed_origins or os.environ.get("ENV") == "development":
-    allowed_origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True if "*" not in allowed_origins else False,
+    allow_origins=["*"],  # Allow all origins for hackathon demo
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── routers ───────────────────────────────────────────────────────────────────
 app.include_router(detect_router)
+app.include_router(allocate_router)
+app.include_router(signals_router)
 app.include_router(ws_router)
 
 
@@ -155,7 +136,11 @@ async def detect(image: UploadFile = File(...)) -> Dict[str, Any]:
 
     try:
         result = detector.detect_fire(temp_filename)
-        decision = agent.decide(result)
+        # Image-only path — no fused signal; fusion happens via POST /signals
+        decision = decision_agent.decide(
+            detection_result=result,
+            fused_signal=None,
+        )
     finally:
         if os.path.exists(temp_filename):
             try:
@@ -164,10 +149,34 @@ async def detect(image: UploadFile = File(...)) -> Dict[str, Any]:
                 pass
 
     return {
-        "detected": result['detected'],
-        "confidence": result['confidence'],
-        "decision": decision,
+        "detected":       result['detected'],
+        "confidence":     result['confidence'],
+        "crisis_type":    decision.get('crisis_type', 'fire'),
+        "severity":       decision.get('severity', result.get('severity', 'none')),
+        "action":         decision['action'],
+        "recommendation": decision.get('recommendation', decision.get('reasoning', '')),
+        "signal_sources": decision.get('signal_sources', ['image']),
+        "decision":       decision,
     }
+
+
+# ── simulate ─────────────────────────────────────────────────────────────────
+@app.post("/simulate")
+async def simulate(request: SimulateRequest) -> Dict[str, Any]:
+    """
+    Runs the ActionSimulator to compute before/after crisis state.
+
+    Args:
+        request (SimulateRequest): Crisis type, allocated resources, and location.
+
+    Returns:
+        Dict[str, Any]: Before/after state, impact metrics, and simulation metadata.
+    """
+    return simulator.simulate(
+        crisis_type=request.crisis_type,
+        allocated_resources=request.allocated_resources,
+        location=request.location or "Unknown",
+    )
 
 
 if __name__ == "__main__":
