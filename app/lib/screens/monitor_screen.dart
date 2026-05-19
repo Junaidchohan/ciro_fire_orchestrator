@@ -26,6 +26,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   // Detection State
   bool _loading = false;
   bool _isAutoMonitoring = false;
+  bool _isMonitoringActive = false;
   Timer? _autoMonitorTimer;
   Uint8List? _selectedImageBytes;
   
@@ -74,10 +75,11 @@ class _MonitorScreenState extends State<MonitorScreen> {
   void _toggleAutoMonitoring() {
     setState(() {
       _isAutoMonitoring = !_isAutoMonitoring;
+      _isMonitoringActive = _isAutoMonitoring;
     });
 
     if (_isAutoMonitoring) {
-      _autoMonitorTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      _autoMonitorTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
         if (!_loading) _captureAndDetect();
       });
     } else {
@@ -110,14 +112,23 @@ class _MonitorScreenState extends State<MonitorScreen> {
       reader.readAsArrayBuffer(file);
       await reader.onLoad.first;
       setState(() {
+        _isMonitoringActive = true;
         _selectedImageBytes = Uint8List.fromList(reader.result as List<int>);
       });
-      _detectCrisis();
+      _detectCrisis().then((_) {
+        if (mounted) {
+          setState(() {
+            _isMonitoringActive = _isAutoMonitoring;
+          });
+        }
+      });
     });
   }
 
   Future<void> _detectCrisis() async {
     if (_selectedImageBytes == null) return;
+    if (!_isMonitoringActive) return;
+    print("Detection request sent at ${DateTime.now()}");
     setState(() => _loading = true);
 
     try {

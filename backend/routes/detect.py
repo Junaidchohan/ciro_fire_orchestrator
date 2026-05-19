@@ -72,7 +72,7 @@ async def detect(
         "crisis_type": decision["crisis_type"],
         "severity": decision["severity"],
         "action": decision["action"],
-        "recommendation": decision["recommendation"],
+        "recommended_action": decision["recommended_action"],
         "reasoning": decision["reasoning"],
         "agent_trace": fire_result,
         "all_classifiers": decision.get("all_classifiers", []),

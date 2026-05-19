@@ -47,9 +47,9 @@ class SignalFusion:
     def __init__(self) -> None:
         """Initialise source registry and trace logger."""
         self.sources: dict = {
-            "image":   {"enabled": True, "weight": 0.6},
-            "weather": {"enabled": True, "weight": 0.2},
-            "social":  {"enabled": True, "weight": 0.2},
+            "image":   {"active": True, "weight": 0.6},
+            "weather": {"active": True, "weight": 0.2},
+            "social":  {"active": True, "weight": 0.2},
         }
         self.logger = TraceLogger()
 
@@ -288,5 +288,34 @@ class SignalFusion:
         }
 
 
+    # ------------------------------------------------------------------
+    # Convenience aliases (matches user-spec method names)
+    # ------------------------------------------------------------------
+    def get_weather(self, location: Optional[str] = "default") -> dict:
+        """
+        Alias for get_weather_signal() matching the public API spec.
+
+        Args:
+            location (str, optional): City/area name for the mock data label.
+
+        Returns:
+            dict: Weather readings plus boolean risk flags and a crisis_score.
+        """
+        return self.get_weather_signal(location=location)
+
+    def get_social(self, text: str) -> dict:
+        """
+        Alias for get_social_signal() matching the public API spec.
+
+        Args:
+            text (str): Raw text (social media post, SMS alert, etc.).
+
+        Returns:
+            dict: Detected crisis type, keyword hits, and confidence score.
+        """
+        return self.get_social_signal(text_input=text)
+
+
 # Module-level singleton for import convenience
 signal_fusion = SignalFusion()
+

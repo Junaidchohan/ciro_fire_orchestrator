@@ -29,8 +29,9 @@ _logger = TraceLogger()
 class SignalRequest(BaseModel):
     """Payload accepted by POST /signals."""
 
-    text_input: str
-    location: Optional[str] = "Karachi"
+    social_text: Optional[str] = ""         # citizen report text (optional)
+    text_input:  Optional[str] = None       # legacy alias — overrides social_text if set
+    location:    Optional[str] = "Karachi"
 
 
 class SignalResponse(BaseModel):
@@ -51,22 +52,29 @@ class SignalResponse(BaseModel):
 @router.post("/signals", response_model=SignalResponse)
 async def analyze_signals(payload: SignalRequest) -> Dict[str, Any]:
     """
-    Fuse weather and social signals into a crisis assessment.
+    Fuse weather, social, and image (default 0.0) signals into a crisis assessment.
 
-    The image source defaults to 0.0 score when no image is supplied
+    Accepts an optional social report text and optional location string.
+    The image source defaults to 0.0 when no image is supplied
     (use POST /detect for image-based detection).
 
     Args:
-        payload (SignalRequest): text_input and optional location.
+        payload (SignalRequest): social_text, optional text_input (legacy), and location.
 
     Returns:
         Dict[str, Any]: Fused crisis score, dominant type, action, and per-source detail.
     """
+    # Resolve text: text_input overrides social_text if explicitly provided
+    resolved_text: str = payload.text_input or payload.social_text or ""
+
     _logger.write_trace(
         agent_name="signals_route",
         step_type="OBSERVE",
-        reasoning=f"Received /signals request — text='{payload.text_input[:60]}', location='{payload.location}'",
-        inputs={"text_input": payload.text_input, "location": payload.location},
+        reasoning=(
+            f"Received /signals request — "
+            f"social_text='{resolved_text[:60]}', location='{payload.location}'"
+        ),
+        inputs={"social_text": resolved_text, "location": payload.location},
         output={},
         confidence_before=0.0,
         confidence_after=0.0,
@@ -74,13 +82,46 @@ async def analyze_signals(payload: SignalRequest) -> Dict[str, Any]:
         duration_ms=0,
     )
 
-    # --- Collect individual source signals --------------------------------
+    # --- Source 1: Weather signal (mock – no API key needed) ---------------
     weather_result = signal_fusion.get_weather_signal(location=payload.location)
-    social_result  = signal_fusion.get_social_signal(text_input=payload.text_input)
 
-    # No image uploaded → pass None; fusion handles it gracefully
+    _logger.write_trace(
+        agent_name="signals_route.weather",
+        step_type="OBSERVE",
+        reasoning=(
+            f"Weather source polled — crisis_type='{weather_result['crisis_type']}', "
+            f"crisis_score={weather_result['crisis_score']:.2f}"
+        ),
+        inputs={"location": payload.location},
+        output=weather_result,
+        confidence_before=0.0,
+        confidence_after=weather_result["crisis_score"],
+        tool_calls=[],
+        duration_ms=5,
+    )
+
+    # --- Source 2: Social / citizen-report signal --------------------------
+    social_result = signal_fusion.get_social_signal(text_input=resolved_text)
+
+    _logger.write_trace(
+        agent_name="signals_route.social",
+        step_type="OBSERVE",
+        reasoning=(
+            f"Social source scanned — detected='{social_result['detected_crisis']}', "
+            f"confidence={social_result['confidence']:.2f}"
+        ),
+        inputs={"social_text": resolved_text},
+        output=social_result,
+        confidence_before=0.0,
+        confidence_after=social_result["confidence"],
+        tool_calls=[],
+        duration_ms=2,
+    )
+
+    # --- Source 3: Image — no image upload here; default 0.0 score ---------
+    # (Use POST /detect for image-based fusion)
     fused = signal_fusion.fuse(
-        image_result=None,
+        image_result=None,        # // mock: no image → image score defaults to 0.0
         weather_result=weather_result,
         social_result=social_result,
     )
@@ -110,11 +151,12 @@ async def analyze_signals(payload: SignalRequest) -> Dict[str, Any]:
     )
 
     return {
-        "fused_score":      fused["fused_score"],
-        "dominant_crisis":  fused["dominant_crisis"],
-        "action":           action,
-        "sources":          fused["sources"],
-        "weather":          weather_result,
-        "social":           social_result,
-        "trace_logged":     True,
+        "fused_score":     fused["fused_score"],
+        "dominant_crisis": fused["dominant_crisis"],
+        "action":          action,
+        "sources":         fused["sources"],
+        "weather":         weather_result,
+        "social":          social_result,
+        "trace_logged":    True,
     }
+
