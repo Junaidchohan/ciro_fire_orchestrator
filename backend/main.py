@@ -35,13 +35,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ✅ FIXED CORS CONFIGURATION - Allows ANY origin for hackathon demo
+# ✅ FIXED CORS CONFIGURATION
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (for Flutter web on any port)
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],  # Allow all headers (including multipart/form-data)
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False, # MUST BE FALSE WHEN ORIGINS IS "*"
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
     expose_headers=["*"],
 )
 
