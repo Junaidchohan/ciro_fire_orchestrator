@@ -68,7 +68,7 @@ class _AgentScreenState extends State<AgentScreen> {
 
     try {
       final response = await http.get(Uri.parse(ApiConfig.traces));
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         if (mounted) {
@@ -88,28 +88,42 @@ class _AgentScreenState extends State<AgentScreen> {
 
   List<TraceLog> get _filteredTraces {
     if (_selectedFilter == 'All') return _allTraces;
-    return _allTraces.where((t) => t.stepType.contains(_selectedFilter)).toList();
+    return _allTraces
+        .where((t) => t.stepType.contains(_selectedFilter))
+        .toList();
   }
 
   Color _getStepColor(String stepType) {
     switch (stepType) {
-      case 'OBSERVE': return AppColors.info;
-      case 'ANALYZE': return AppColors.tertiary;
-      case 'DECIDE': return AppColors.warning;
-      case 'ACT': return AppColors.success;
-      case 'EVALUATE': return AppColors.error;
-      default: return AppColors.textMuted;
+      case 'OBSERVE':
+        return AppColors.info;
+      case 'ANALYZE':
+        return AppColors.tertiary;
+      case 'DECIDE':
+        return AppColors.warning;
+      case 'ACT':
+        return AppColors.success;
+      case 'EVALUATE':
+        return AppColors.error;
+      default:
+        return AppColors.textMuted;
     }
   }
 
   IconData _getStepIcon(String stepType) {
     switch (stepType) {
-      case 'OBSERVE': return Icons.visibility_outlined;
-      case 'ANALYZE': return Icons.analytics_outlined;
-      case 'DECIDE': return Icons.psychology_outlined;
-      case 'ACT': return Icons.bolt_outlined;
-      case 'EVALUATE': return Icons.fact_check_outlined;
-      default: return Icons.memory;
+      case 'OBSERVE':
+        return Icons.visibility_outlined;
+      case 'ANALYZE':
+        return Icons.analytics_outlined;
+      case 'DECIDE':
+        return Icons.psychology_outlined;
+      case 'ACT':
+        return Icons.bolt_outlined;
+      case 'EVALUATE':
+        return Icons.fact_check_outlined;
+      default:
+        return Icons.memory;
     }
   }
 
@@ -131,7 +145,10 @@ class _AgentScreenState extends State<AgentScreen> {
         children: [
           // Filter Chips Container
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 12.0,
+            ),
             color: AppColors.surface,
             width: double.infinity,
             child: SingleChildScrollView(
@@ -145,8 +162,12 @@ class _AgentScreenState extends State<AgentScreen> {
                       label: Text(
                         filter,
                         style: GoogleFonts.outfit(
-                          color: isSelected ? Colors.white : AppColors.textSecondary,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                           fontSize: 12,
                         ),
                       ),
@@ -159,7 +180,9 @@ class _AgentScreenState extends State<AgentScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                         side: BorderSide(
-                          color: isSelected ? AppColors.primary : Colors.grey.shade300,
+                          color: isSelected
+                              ? AppColors.primary
+                              : Colors.grey.shade300,
                         ),
                       ),
                     ),
@@ -168,11 +191,13 @@ class _AgentScreenState extends State<AgentScreen> {
               ),
             ),
           ),
-          
+
           // Traces List View
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  )
                 : RefreshIndicator(
                     onRefresh: _fetchTraces,
                     color: AppColors.primary,
@@ -195,7 +220,7 @@ class _AgentScreenState extends State<AgentScreen> {
   Widget _buildTraceCard(TraceLog trace) {
     final color = _getStepColor(trace.stepType);
     final icon = _getStepIcon(trace.stepType);
-    
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -240,7 +265,10 @@ class _AgentScreenState extends State<AgentScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -260,8 +288,8 @@ class _AgentScreenState extends State<AgentScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              trace.reasoning.length > 80 
-                  ? '${trace.reasoning.substring(0, 80)}...' 
+              trace.reasoning.length > 80
+                  ? '${trace.reasoning.substring(0, 80)}...'
                   : trace.reasoning,
               style: GoogleFonts.outfit(
                 color: AppColors.textSecondary,
@@ -274,7 +302,11 @@ class _AgentScreenState extends State<AgentScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildConfidenceBadge('Before', trace.confidenceBefore),
-                Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.textMuted),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 16,
+                  color: AppColors.textMuted,
+                ),
                 _buildConfidenceBadge('After', trace.confidenceAfter),
               ],
             ),
@@ -290,10 +322,7 @@ class _AgentScreenState extends State<AgentScreen> {
       children: [
         Text(
           '$label: ',
-          style: GoogleFonts.outfit(
-            color: AppColors.textMuted,
-            fontSize: 12,
-          ),
+          style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 12),
         ),
         Text(
           '$valPercent%',
@@ -330,10 +359,7 @@ class _AgentScreenState extends State<AgentScreen> {
           Text(
             'Traces will appear here once an\nincident is processed.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(
-              fontSize: 14,
-              color: AppColors.textMuted,
-            ),
+            style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textMuted),
           ),
         ],
       ),
