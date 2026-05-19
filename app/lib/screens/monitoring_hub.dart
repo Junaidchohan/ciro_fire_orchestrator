@@ -4,6 +4,8 @@ import '../theme/app_colors.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../config/api_config.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
@@ -24,6 +26,9 @@ class _MonitoringHubState extends State<MonitoringHub>
   String _result = '';
   double _confidence = 0.0;
   String? _severity;
+  String? _action;
+  String? _recommendation;
+  File? _selectedImage;
 
   // ── simulation state ────────────────────────────────────────────────────────
   bool _simLoading = false;
@@ -61,24 +66,19 @@ class _MonitoringHubState extends State<MonitoringHub>
   }
 
   // ── image pick / detect ─────────────────────────────────────────────────────
-  void _pickImage() {
-    final input = html.FileUploadInputElement();
-    input.accept = 'image/*';
-    input.click();
-    input.onChange.listen((e) async {
-      final file = input.files!.first;
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-      await reader.onLoad.first;
+  void _pickImage() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
       setState(() {
-        _selectedImageBytes =
-            Uint8List.fromList(reader.result as List<int>);
+        _selectedImageBytes = bytes;
         _result = '';
         _confidence = 0.0;
         _severity = null;
+        _selectedImage = File(picked.path);
       });
       _detectFire();
-    });
+    }
   }
 
   Future<void> _detectFire() async {
@@ -105,6 +105,8 @@ class _MonitoringHubState extends State<MonitoringHub>
         _confidence =
             (result['confidence'] as num?)?.toDouble() ?? 0.0;
         _severity = (result['severity'] as String?) ?? 'none';
+        _action = result['action'] as String?;
+        _recommendation = result['recommendation'] as String?;
         _result =
             detected ? '🔥 FIRE DETECTED!' : '✅ No fire detected';
         _loading = false;
@@ -121,6 +123,37 @@ class _MonitoringHubState extends State<MonitoringHub>
     showDialog(
       context: context,
       builder: (context) {
+        Color severityColor = Colors.grey;
+        if (_severity != null) {
+          switch (_severity!.toLowerCase()) {
+            case 'high':
+              severityColor = Colors.redAccent;
+              break;
+            case 'medium':
+              severityColor = Colors.orangeAccent;
+              break;
+            case 'low':
+              severityColor = Colors.yellowAccent;
+              break;
+          }
+        }
+
+        Color actionColor = Colors.cyanAccent;
+        if (_action != null) {
+          switch (_action!.toUpperCase()) {
+            case 'EVACUATE':
+              actionColor = Colors.red;
+              break;
+            case 'WARNING':
+            case 'WARN':
+              actionColor = Colors.orange;
+              break;
+            case 'MONITOR':
+              actionColor = Colors.green;
+              break;
+          }
+        }
+
         return AlertDialog(
           backgroundColor: AppColors.surfaceElevated,
           title: Text('Detection Result',
@@ -149,11 +182,43 @@ class _MonitoringHubState extends State<MonitoringHub>
                     GoogleFonts.outfit(color: AppColors.textPrimary),
               ),
               if (_severity != null && _severity != 'none') ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: severityColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: severityColor.withOpacity(0.4), width: 1.2),
+                  ),
+                  child: Text(
+                    'SEVERITY: ${_severity!.toUpperCase()}',
+                    style: GoogleFonts.outfit(
+                      color: severityColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                'Recommended Action: ${_action ?? "NONE"}',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  color: actionColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              if (_recommendation != null && _recommendation!.isNotEmpty) ...[
+                const SizedBox(height: 6),
                 Text(
-                  'Severity: ${_severity!.toUpperCase()}',
-                  style:
-                      GoogleFonts.outfit(color: Colors.orangeAccent),
+                  _recommendation!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.outfit(
+                    color: AppColors.textPrimary.withOpacity(0.85),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ],
@@ -635,6 +700,13 @@ class _MonitoringHubState extends State<MonitoringHub>
             padding: const EdgeInsets.all(16),
             children: [
               // ── monitoring cards grid ────────────────────────────────────
+              if (_selectedImage != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(_selectedImage!, height: 200, fit: BoxFit.cover),
+                ),
+                const SizedBox(height: 16),
+              ],
               GridView.count(
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
