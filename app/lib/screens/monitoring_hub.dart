@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
+import 'dart:async';
 import 'package:image_picker/image_picker.dart';
 import '../config/api_config.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
@@ -29,6 +30,11 @@ class _MonitoringHubState extends State<MonitoringHub>
   String? _action;
   String? _recommendation;
   File? _selectedImage;
+
+  // ── auto-workflow state ─────────────────────────────────────────────────────
+  Timer? _autoWorkflowTimer;
+  bool _autoWorkflowRunning = false;
+  int _autoWorkflowCount = 0;
 
   // ── simulation state ────────────────────────────────────────────────────────
   bool _simLoading = false;
@@ -61,6 +67,7 @@ class _MonitoringHubState extends State<MonitoringHub>
 
   @override
   void dispose() {
+    _autoWorkflowTimer?.cancel();
     _simAnimCtrl.dispose();
     super.dispose();
   }
@@ -75,6 +82,8 @@ class _MonitoringHubState extends State<MonitoringHub>
         _result = '';
         _confidence = 0.0;
         _severity = null;
+        _action = null;
+        _recommendation = null;
         _selectedImage = File(picked.path);
       });
       _detectFire();
@@ -82,14 +91,17 @@ class _MonitoringHubState extends State<MonitoringHub>
   }
 
   Future<void> _detectFire() async {
-    if (_selectedImageBytes == null) return;
+    if (_selectedImageBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an image first')),
+      );
+      return;
+    }
+
     setState(() => _loading = true);
 
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse(ApiConfig.detect),
-      );
+      var request = http.MultipartRequest('POST', Uri.parse(ApiConfig.detect));
       request.files.add(
         http.MultipartFile.fromBytes(
           'image',
@@ -100,23 +112,77 @@ class _MonitoringHubState extends State<MonitoringHub>
       var response = await request.send();
       var result = json.decode(await response.stream.bytesToString());
 
-      setState(() {
-        bool detected = result['detected'] == true;
-        _confidence =
-            (result['confidence'] as num?)?.toDouble() ?? 0.0;
-        _severity = (result['severity'] as String?) ?? 'none';
-        _action = result['action'] as String?;
-        _recommendation = result['recommendation'] as String?;
-        _result =
-            detected ? '🔥 FIRE DETECTED!' : '✅ No fire detected';
-        _loading = false;
-        _showResultDialog();
-      });
+      if (mounted) {
+        setState(() {
+          bool detected = result['detected'] == true;
+          _confidence = (result['confidence'] as num?)?.toDouble() ?? 0.0;
+          _severity = (result['severity'] as String?) ?? 'none';
+          _action = result['action'] as String?;
+          _recommendation = result['recommendation'] as String?;
+          _result = detected ? '🔥 FIRE DETECTED!' : '✅ No fire detected';
+          _loading = false;
+        });
+
+        // Show result dialog only if not in auto-workflow mode
+        if (!_autoWorkflowRunning) {
+          _showResultDialog();
+        }
+      }
     } catch (e) {
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
+  }
+
+  // ── auto-workflow methods ───────────────────────────────────────────────────
+  void _startAutoWorkflow() {
+    if (_selectedImageBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload an image first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _autoWorkflowRunning = true;
+      _autoWorkflowCount = 0;
+    });
+
+    // Run detection immediately, then every 10 seconds
+    _detectFire();
+
+    _autoWorkflowTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (mounted && _autoWorkflowRunning && _selectedImageBytes != null) {
+        setState(() => _autoWorkflowCount++);
+        _detectFire();
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Auto-workflow started - detection every 10 seconds'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _stopAutoWorkflow() {
+    _autoWorkflowTimer?.cancel();
+    setState(() {
+      _autoWorkflowRunning = false;
+      _autoWorkflowCount = 0;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Auto-workflow stopped'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   void _showResultDialog() {
@@ -139,6 +205,7 @@ class _MonitoringHubState extends State<MonitoringHub>
         }
 
         Color actionColor = Colors.cyanAccent;
+        String actionDisplay = _action?.toUpperCase() ?? 'NONE';
         if (_action != null) {
           switch (_action!.toUpperCase()) {
             case 'EVACUATE':
@@ -156,14 +223,19 @@ class _MonitoringHubState extends State<MonitoringHub>
 
         return AlertDialog(
           backgroundColor: AppColors.surfaceElevated,
-          title: Text('Detection Result',
-              style: GoogleFonts.outfit(color: AppColors.textPrimary)),
+          title: Text(
+            'Detection Result',
+            style: GoogleFonts.outfit(color: AppColors.textPrimary),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_selectedImageBytes != null)
-                Image.memory(_selectedImageBytes!,
-                    height: 150, fit: BoxFit.cover),
+                Image.memory(
+                  _selectedImageBytes!,
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
               const SizedBox(height: 16),
               Text(
                 _result,
@@ -178,17 +250,22 @@ class _MonitoringHubState extends State<MonitoringHub>
               const SizedBox(height: 8),
               Text(
                 'Confidence: ${(_confidence * 100).toStringAsFixed(1)}%',
-                style:
-                    GoogleFonts.outfit(color: AppColors.textPrimary),
+                style: GoogleFonts.outfit(color: AppColors.textPrimary),
               ),
               if (_severity != null && _severity != 'none') ...[
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: severityColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: severityColor.withOpacity(0.4), width: 1.2),
+                    border: Border.all(
+                      color: severityColor.withOpacity(0.4),
+                      width: 1.2,
+                    ),
                   ),
                   child: Text(
                     'SEVERITY: ${_severity!.toUpperCase()}',
@@ -202,7 +279,7 @@ class _MonitoringHubState extends State<MonitoringHub>
               ],
               const SizedBox(height: 12),
               Text(
-                'Recommended Action: ${_action ?? "NONE"}',
+                'Recommended Action: $actionDisplay',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
                   color: actionColor,
@@ -226,9 +303,11 @@ class _MonitoringHubState extends State<MonitoringHub>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Close',
-                  style: GoogleFonts.outfit(color: AppColors.primary)),
-            )
+              child: Text(
+                'Close',
+                style: GoogleFonts.outfit(color: AppColors.primary),
+              ),
+            ),
           ],
         );
       },
@@ -236,8 +315,9 @@ class _MonitoringHubState extends State<MonitoringHub>
   }
 
   void _pickVideo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Video upload coming soon!')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Video upload coming soon!')));
   }
 
   // ── simulation ──────────────────────────────────────────────────────────────
@@ -261,8 +341,7 @@ class _MonitoringHubState extends State<MonitoringHub>
       );
       if (response.statusCode == 200) {
         setState(() {
-          _simResult =
-              json.decode(response.body) as Map<String, dynamic>;
+          _simResult = json.decode(response.body) as Map<String, dynamic>;
           _simLoading = false;
         });
         _simAnimCtrl.forward();
@@ -271,8 +350,9 @@ class _MonitoringHubState extends State<MonitoringHub>
       }
     } catch (e) {
       setState(() => _simLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Simulation error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Simulation error: $e')));
     }
   }
 
@@ -285,8 +365,7 @@ class _MonitoringHubState extends State<MonitoringHub>
   }) {
     return Card(
       elevation: 4,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: AppColors.surfaceElevated,
       child: InkWell(
         onTap: onTap,
@@ -294,8 +373,7 @@ class _MonitoringHubState extends State<MonitoringHub>
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: color.withOpacity(0.5), width: 1.5),
+            border: Border.all(color: color.withOpacity(0.5), width: 1.5),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -396,9 +474,11 @@ class _MonitoringHubState extends State<MonitoringHub>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(r['icon'] as IconData,
-                        size: 16,
-                        color: AppColors.textPrimary.withOpacity(0.55)),
+                    Icon(
+                      r['icon'] as IconData,
+                      size: 16,
+                      color: AppColors.textPrimary.withOpacity(0.55),
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Column(
@@ -408,8 +488,7 @@ class _MonitoringHubState extends State<MonitoringHub>
                             r['key'] as String,
                             style: GoogleFonts.outfit(
                               fontSize: 11,
-                              color:
-                                  AppColors.textPrimary.withOpacity(0.55),
+                              color: AppColors.textPrimary.withOpacity(0.55),
                             ),
                           ),
                           Text(
@@ -437,20 +516,17 @@ class _MonitoringHubState extends State<MonitoringHub>
   Widget _buildImpactChips(Map<String, dynamic> metrics) {
     final chips = <Map<String, dynamic>>[
       {
-        'label':
-            '${metrics['response_time_improvement_pct']}% faster response',
+        'label': '${metrics['response_time_improvement_pct']}% faster response',
         'icon': Icons.speed_rounded,
         'color': Colors.greenAccent,
       },
       {
-        'label':
-            '${metrics['population_protected']} people protected',
+        'label': '${metrics['population_protected']} people protected',
         'icon': Icons.shield_rounded,
         'color': Colors.blueAccent,
       },
       {
-        'label':
-            '${metrics['total_resources_deployed']} resources deployed',
+        'label': '${metrics['total_resources_deployed']} resources deployed',
         'icon': Icons.local_fire_department_rounded,
         'color': Colors.orangeAccent,
       },
@@ -487,6 +563,173 @@ class _MonitoringHubState extends State<MonitoringHub>
     );
   }
 
+  /// Builds the auto-workflow control panel
+  Widget _buildAutoWorkflowPanel() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _autoWorkflowRunning
+              ? Colors.greenAccent.withOpacity(0.5)
+              : Colors.grey.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: _autoWorkflowRunning
+            ? [
+                BoxShadow(
+                  color: Colors.greenAccent.withOpacity(0.1),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ]
+            : [],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _autoWorkflowRunning ? Icons.play_circle_filled : Icons.timer,
+                color: _autoWorkflowRunning ? Colors.greenAccent : Colors.grey,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Auto Workflow Detection',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (_autoWorkflowRunning)
+                      Text(
+                        'Running • ${_autoWorkflowCount} detections completed',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: Colors.greenAccent,
+                        ),
+                      )
+                    else
+                      Text(
+                        'Upload an image to get started',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _autoWorkflowRunning ? null : _startAutoWorkflow,
+                  icon: Icon(
+                    Icons.play_arrow,
+                    color: _autoWorkflowRunning ? Colors.grey : Colors.white,
+                  ),
+                  label: Text(
+                    'Start Auto Workflow',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: _autoWorkflowRunning ? Colors.grey : Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _autoWorkflowRunning
+                        ? Colors.grey.withOpacity(0.3)
+                        : Colors.greenAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _autoWorkflowRunning ? _stopAutoWorkflow : null,
+                  icon: Icon(
+                    Icons.stop_circle,
+                    color: _autoWorkflowRunning ? Colors.white : Colors.grey,
+                  ),
+                  label: Text(
+                    'Stop Auto Workflow',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: _autoWorkflowRunning ? Colors.white : Colors.grey,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _autoWorkflowRunning
+                        ? Colors.redAccent
+                        : Colors.grey.withOpacity(0.3),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_autoWorkflowRunning)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.greenAccent.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outlined,
+                      size: 14,
+                      color: Colors.greenAccent,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Detection runs every 10 seconds. Results shown in status bar.',
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          color: Colors.greenAccent.withOpacity(0.8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// Simulation panel widget embedded in the ListView.
   Widget _buildSimulationPanel() {
     return Container(
@@ -495,7 +738,9 @@ class _MonitoringHubState extends State<MonitoringHub>
         color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-            color: Colors.cyanAccent.withOpacity(0.35), width: 1.5),
+          color: Colors.cyanAccent.withOpacity(0.35),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.cyanAccent.withOpacity(0.06),
@@ -511,8 +756,9 @@ class _MonitoringHubState extends State<MonitoringHub>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
               gradient: LinearGradient(
                 colors: [
                   Colors.cyanAccent.withOpacity(0.15),
@@ -522,8 +768,11 @@ class _MonitoringHubState extends State<MonitoringHub>
             ),
             child: Row(
               children: [
-                const Icon(Icons.play_circle_fill_rounded,
-                    color: Colors.cyanAccent, size: 22),
+                const Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Colors.cyanAccent,
+                  size: 22,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -541,13 +790,19 @@ class _MonitoringHubState extends State<MonitoringHub>
                     value: _selectedCrisis,
                     dropdownColor: AppColors.surfaceElevated,
                     style: GoogleFonts.outfit(
-                        color: Colors.cyanAccent, fontSize: 13),
-                    icon: const Icon(Icons.expand_more,
-                        color: Colors.cyanAccent, size: 18),
+                      color: Colors.cyanAccent,
+                      fontSize: 13,
+                    ),
+                    icon: const Icon(
+                      Icons.expand_more,
+                      color: Colors.cyanAccent,
+                      size: 18,
+                    ),
                     items: ['fire', 'flood', 'heatwave'].map((c) {
                       return DropdownMenuItem(
-                          value: c,
-                          child: Text(c[0].toUpperCase() + c.substring(1)));
+                        value: c,
+                        child: Text(c[0].toUpperCase() + c.substring(1)),
+                      );
                     }).toList(),
                     onChanged: (v) {
                       if (v != null) setState(() => _selectedCrisis = v);
@@ -563,23 +818,32 @@ class _MonitoringHubState extends State<MonitoringHub>
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.black),
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
                         )
-                      : const Icon(Icons.bolt_rounded,
-                          size: 16, color: Colors.black),
+                      : const Icon(
+                          Icons.bolt_rounded,
+                          size: 16,
+                          color: Colors.black,
+                        ),
                   label: Text(
                     _simLoading ? 'Simulating…' : 'Run',
                     style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: Colors.black),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.black,
+                    ),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.cyanAccent,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ],
@@ -601,8 +865,7 @@ class _MonitoringHubState extends State<MonitoringHub>
                       children: [
                         _buildStateColumn(
                           label: 'BEFORE',
-                          state:
-                              _simResult!['before'] as Map<String, dynamic>,
+                          state: _simResult!['before'] as Map<String, dynamic>,
                           accentColor: Colors.redAccent,
                           headerIcon: Icons.warning_amber_rounded,
                         ),
@@ -617,8 +880,7 @@ class _MonitoringHubState extends State<MonitoringHub>
                         ),
                         _buildStateColumn(
                           label: 'AFTER',
-                          state:
-                              _simResult!['after'] as Map<String, dynamic>,
+                          state: _simResult!['after'] as Map<String, dynamic>,
                           accentColor: Colors.greenAccent,
                           headerIcon: Icons.check_circle_rounded,
                         ),
@@ -630,15 +892,18 @@ class _MonitoringHubState extends State<MonitoringHub>
                     // ── simulation time badge ────────────────────────────────
                     Row(
                       children: [
-                        const Icon(Icons.timer_rounded,
-                            size: 14,
-                            color: Colors.cyanAccent),
+                        const Icon(
+                          Icons.timer_rounded,
+                          size: 14,
+                          color: Colors.cyanAccent,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Simulated in ${_simResult!['simulation_time_seconds']}s',
                           style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              color: AppColors.textPrimary.withOpacity(0.6)),
+                            fontSize: 12,
+                            color: AppColors.textPrimary.withOpacity(0.6),
+                          ),
                         ),
                       ],
                     ),
@@ -658,21 +923,21 @@ class _MonitoringHubState extends State<MonitoringHub>
                     ),
                     const SizedBox(height: 8),
                     _buildImpactChips(
-                        _simResult!['impact_metrics']
-                            as Map<String, dynamic>),
+                      _simResult!['impact_metrics'] as Map<String, dynamic>,
+                    ),
                   ],
                 ),
               ),
             )
           else if (!_simLoading)
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: Text(
                 'Select a crisis type and press Run to see before/after impact.',
                 style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    color: AppColors.textPrimary.withOpacity(0.5)),
+                  fontSize: 13,
+                  color: AppColors.textPrimary.withOpacity(0.5),
+                ),
               ),
             ),
         ],
@@ -687,11 +952,12 @@ class _MonitoringHubState extends State<MonitoringHub>
         title: Text(
           'AI Monitoring Center',
           style: GoogleFonts.outfit(
-              fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
         ),
         flexibleSpace: Container(
-          decoration:
-              const BoxDecoration(gradient: AppColors.appBarGradient),
+          decoration: const BoxDecoration(gradient: AppColors.appBarGradient),
         ),
       ),
       body: Stack(
@@ -703,7 +969,11 @@ class _MonitoringHubState extends State<MonitoringHub>
               if (_selectedImage != null) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.file(_selectedImage!, height: 200, fit: BoxFit.cover),
+                  child: Image.file(
+                    _selectedImage!,
+                    height: 200,
+                    fit: BoxFit.cover,
+                  ),
                 ),
                 const SizedBox(height: 16),
               ],
@@ -718,8 +988,7 @@ class _MonitoringHubState extends State<MonitoringHub>
                     icon: Icons.videocam,
                     title: 'Start Live Monitoring',
                     color: Colors.redAccent,
-                    onTap: () =>
-                        Navigator.pushNamed(context, '/camera'),
+                    onTap: () => Navigator.pushNamed(context, '/camera'),
                   ),
                   _buildCard(
                     icon: Icons.image,
@@ -739,16 +1008,14 @@ class _MonitoringHubState extends State<MonitoringHub>
                     color: Colors.orangeAccent,
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(
-                          builder: (_) => const HistoryScreen()),
+                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
                     ),
                   ),
                   _buildCard(
                     icon: Icons.psychology,
                     title: 'Agent Reasoning Trace',
                     color: Colors.greenAccent,
-                    onTap: () =>
-                        Navigator.pushNamed(context, '/traces'),
+                    onTap: () => Navigator.pushNamed(context, '/traces'),
                   ),
                   _buildCard(
                     icon: Icons.warning_amber_rounded,
@@ -756,8 +1023,7 @@ class _MonitoringHubState extends State<MonitoringHub>
                     color: Colors.amberAccent,
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(
-                          builder: (_) => const HistoryScreen()),
+                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
                     ),
                   ),
                 ],
@@ -765,9 +1031,12 @@ class _MonitoringHubState extends State<MonitoringHub>
 
               const SizedBox(height: 20),
 
+              // ── auto workflow section ────────────────────────────────────
+              _buildAutoWorkflowPanel(),
+
               // ── section label ────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: 12, top: 8),
                 child: Row(
                   children: [
                     Container(
@@ -801,8 +1070,7 @@ class _MonitoringHubState extends State<MonitoringHub>
             Container(
               color: Colors.black54,
               child: const Center(
-                child:
-                    CircularProgressIndicator(color: AppColors.primary),
+                child: CircularProgressIndicator(color: AppColors.primary),
               ),
             ),
         ],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -45,6 +46,15 @@ class _AgentScreenState extends State<AgentScreen> {
   List<TraceLog> _allTraces = [];
   bool _isLoading = true;
   String _selectedFilter = 'All';
+  Timer? _pollTimer;
+
+  final List<String> _pipelineSteps = [
+    'OBSERVE',
+    'ANALYZE',
+    'DECIDE',
+    'ACT',
+    'EVALUATE',
+  ];
 
   final List<String> _filters = [
     'All',
@@ -59,12 +69,27 @@ class _AgentScreenState extends State<AgentScreen> {
   void initState() {
     super.initState();
     _fetchTraces();
+    _startPolling();
   }
 
-  Future<void> _fetchTraces() async {
-    setState(() {
-      _isLoading = true;
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPolling() {
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _fetchTraces(silent: true);
     });
+  }
+
+  Future<void> _fetchTraces({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final response = await http.get(Uri.parse(ApiConfig.traces));
@@ -75,15 +100,27 @@ class _AgentScreenState extends State<AgentScreen> {
           setState(() {
             _allTraces = data.map((json) => TraceLog.fromJson(json)).toList();
             _allTraces.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-            _isLoading = false;
+            if (!silent) _isLoading = false;
           });
         }
       } else {
-        if (mounted) setState(() => _isLoading = false);
+        if (!silent && mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (!silent && mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String get _currentPipelineStep {
+    if (_allTraces.isEmpty) return '';
+    return _allTraces.first.stepType;
+  }
+
+  String get _latestAction {
+    if (_allTraces.isEmpty) return 'No action yet';
+    return _allTraces.first.reasoning.isNotEmpty
+        ? _allTraces.first.reasoning
+        : 'Processing...';
   }
 
   List<TraceLog> get _filteredTraces {
@@ -143,6 +180,12 @@ class _AgentScreenState extends State<AgentScreen> {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
+          // Pipeline Row
+          _buildPipelineRow(),
+
+          // Latest Action Section
+          if (_allTraces.isNotEmpty) _buildLatestActionSection(),
+
           // Filter Chips Container
           Container(
             padding: const EdgeInsets.symmetric(
@@ -211,6 +254,154 @@ class _AgentScreenState extends State<AgentScreen> {
                             },
                           ),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPipelineRow() {
+    final currentStep = _currentPipelineStep;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+      color: AppColors.surface,
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Agent Pipeline',
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textMuted,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(_pipelineSteps.length, (index) {
+                final step = _pipelineSteps[index];
+                final isActive = step == currentStep;
+                final color = _getStepColor(step);
+                final icon = _getStepIcon(step);
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    right: index < _pipelineSteps.length - 1 ? 0 : 0,
+                  ),
+                  child: Row(
+                    children: [
+                      // Step Circle
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? color.withOpacity(0.2)
+                              : AppColors.surfaceElevated,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isActive ? color : Colors.grey.shade300,
+                            width: isActive ? 2.5 : 1.5,
+                          ),
+                          boxShadow: isActive
+                              ? [
+                                  BoxShadow(
+                                    color: color.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Icon(
+                          icon,
+                          color: isActive ? color : AppColors.textMuted,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        step,
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: isActive
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isActive ? color : AppColors.textMuted,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      // Arrow (except for last step)
+                      if (index < _pipelineSteps.length - 1) ...[
+                        const SizedBox(width: 12),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 16,
+                          color: AppColors.textMuted.withOpacity(0.5),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLatestActionSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      color: AppColors.surfaceElevated.withOpacity(0.5),
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.local_fire_department,
+                  color: AppColors.primary,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Latest Action',
+                style: GoogleFonts.outfit(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMuted,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _latestAction.length > 120
+                ? '${_latestAction.substring(0, 120)}...'
+                : _latestAction,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
           ),
         ],
       ),
