@@ -35,16 +35,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS – allow all for local development
+# ✅ FIXED CORS CONFIGURATION - Allows ANY origin for hackathon demo
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # Allow all origins (for Flutter web on any port)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allow all headers (including multipart/form-data)
     expose_headers=["*"],
 )
 
+# Include routers
 app.include_router(detect_router)
 app.include_router(allocate_router)
 app.include_router(signals_router)
@@ -94,15 +95,11 @@ async def detect(image: UploadFile = File(...)) -> Dict[str, Any]:
         f.write(contents)
 
     try:
-        # Get detection result (with fallback inside detector)
         result = detector.detect_fire(temp_filename)
-
-        # Ensure result has required keys
         result.setdefault("detected", True)
         result.setdefault("confidence", 0.92)
         result.setdefault("severity", "high")
 
-        # Call decision agent (safe wrapper)
         try:
             decision = decision_agent.decide(
                 detection_result=result,
@@ -121,7 +118,6 @@ async def detect(image: UploadFile = File(...)) -> Dict[str, Any]:
                 "allocation": {}
             }
 
-        # Normalize action to uppercase for UI
         action_upper = decision.get("action", "monitor").upper()
         if action_upper not in ["EVACUATE", "WARNING", "MONITOR"]:
             action_upper = "MONITOR"
@@ -167,5 +163,5 @@ async def simulate(request: SimulateRequest) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8080))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

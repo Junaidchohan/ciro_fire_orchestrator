@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../theme/app_colors.dart';
 import '../config/api_config.dart';
 
 class AlertService {
@@ -11,16 +10,14 @@ class AlertService {
 
   WebSocketChannel? _channel;
   final ValueNotifier<bool> isConnected = ValueNotifier<bool>(false);
-  
+
   void Function(Map<String, dynamic> alertData)? onAlertReceived;
 
   void connect() {
     if (isConnected.value) return;
     try {
-      _channel = WebSocketChannel.connect(
-        Uri.parse(ApiConfig.wsUrl),
-      );
-      
+      _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
+
       isConnected.value = true;
 
       _channel!.stream.listen(

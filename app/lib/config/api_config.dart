@@ -1,6 +1,9 @@
 class ApiConfig {
-  // static const String baseUrl = 'https://ciro-fire-orchestrator.onrender.com';
-  static const String baseUrl = 'http://127.0.0.1:8000';
+  // Use Google Cloud Run (LIVE)
+  static const String baseUrl =
+      'https://anti-gravity-backend-284125878879.us-central1.run.app';
+
+  // Endpoints
   static const String detect = '$baseUrl/detect';
   static const String health = '$baseUrl/health';
   static const String traces = '$baseUrl/traces';
@@ -9,6 +12,8 @@ class ApiConfig {
   static const String productionStop = '$baseUrl/production/stop';
   static const String simulate = '$baseUrl/simulate';
   static const String allocate = '$baseUrl/allocate';
-  static const String wsUrl = "ws://127.0.0.1:8000/ws";
-  // static const String wsUrl = 'wss://ciro-fire-orchestrator.onrender.com/ws';
+
+  // WebSocket (fix this - HTTPS uses WSS, not WS)
+  static const String wsUrl =
+      'wss://anti-gravity-backend-284125878879.us-central1.run.app/ws';
 }
