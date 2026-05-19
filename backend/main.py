@@ -41,14 +41,16 @@ app = FastAPI(
 )
 
 # Configure Cross-Origin Resource Sharing (CORS)
-# NOTE: allow_credentials must be False when allow_origins=["*"].
-# Starlette raises AssertionError on startup if both are set, breaking CORS.
+# NOTE: allow_credentials MUST be False when allow_origins=["*"].
+# Starlette raises AssertionError on startup if both are set, crashing the server.
+# The browser spec also forbids credentialed wildcard CORS, so False is correct.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ── routers ───────────────────────────────────────────────────────────────────
