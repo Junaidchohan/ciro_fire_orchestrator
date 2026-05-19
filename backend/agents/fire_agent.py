@@ -24,7 +24,7 @@ class FireAgent(BaseAgent):
 
     def __init__(self) -> None:
         """Initialise the agent and inherit the TraceLogger from BaseAgent."""
-        super().__init__("fire_agent")
+        super().__init__(name="fire_agent")
 
     # ------------------------------------------------------------------
     # OODA Steps
