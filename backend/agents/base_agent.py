@@ -59,23 +59,78 @@ class BaseAgent(ABC):
         """
         try:
             self.state = "observing"
-            self.logger.write_trace(self.name, "OBSERVE", f"Input: {input_data}", 0.5)
+            self.logger.write_trace(
+                agent_name=self.name,
+                step_type="OBSERVE",
+                reasoning=f"Input: {input_data}",
+                confidence_before=0.5,
+                confidence_after=0.5,
+                inputs=input_data,
+                output=None,
+                tool_calls=[],
+                duration_ms=0,
+                timestamp=None
+            )
             obs = await self.observe(input_data)
 
             self.state = "analyzing"
-            self.logger.write_trace(self.name, "ANALYZE", f"Obs: {obs}", 0.6)
+            self.logger.write_trace(
+                agent_name=self.name,
+                step_type="ANALYZE",
+                reasoning=f"Obs: {obs}",
+                confidence_before=0.6,
+                confidence_after=0.6,
+                inputs=obs,
+                output=None,
+                tool_calls=[],
+                duration_ms=0,
+                timestamp=None
+            )
             analysis = await self.analyze(obs)
 
             self.state = "deciding"
-            self.logger.write_trace(self.name, "DECIDE", f"Analysis: {analysis}", 0.7)
+            self.logger.write_trace(
+                agent_name=self.name,
+                step_type="DECIDE",
+                reasoning=f"Analysis: {analysis}",
+                confidence_before=0.7,
+                confidence_after=0.7,
+                inputs=analysis,
+                output=None,
+                tool_calls=[],
+                duration_ms=0,
+                timestamp=None
+            )
             decision = await self.decide(analysis)
 
             self.state = "acting"
-            self.logger.write_trace(self.name, "ACT", f"Decision: {decision}", 0.8)
+            self.logger.write_trace(
+                agent_name=self.name,
+                step_type="ACT",
+                reasoning=f"Decision: {decision}",
+                confidence_before=0.8,
+                confidence_after=0.8,
+                inputs=decision,
+                output=None,
+                tool_calls=[],
+                duration_ms=0,
+                timestamp=None
+            )
             result = await self.act(decision)
 
             self.state = "evaluating"
-            self.logger.write_trace(self.name, "EVALUATE", f"Result: {result}", 0.85)
+            self.logger.write_trace(
+                agent_name=self.name,
+                step_type="EVALUATE",
+                reasoning=f"Result: {result}",
+                confidence_before=0.85,
+                confidence_after=0.85,
+                inputs=result,
+                output=None,
+                tool_calls=[],
+                duration_ms=0,
+                timestamp=None
+            )
             evaluation = await self.evaluate(result)
 
             return evaluation
