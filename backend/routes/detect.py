@@ -8,7 +8,9 @@ production loop lifecycle management.
 
 import os
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, File, UploadFile, BackgroundTasks, Body
+from fastapi import APIRouter, File, UploadFile, BackgroundTasks, Body, Form
+import cv2
+import tempfile
 from agents.orchestrator import orchestrator
 from agents.decision_agent import agent as decision_agent
 from agents.crisis_classifier import classifier
@@ -96,6 +98,124 @@ async def detect(
         "agent_trace": fire_result,
         "all_classifiers": decision.get("all_classifiers", []),
     }
+
+
+@router.post("/detect_video")
+async def detect_video(
+    video: UploadFile = File(...),
+    social_text: Optional[str] = Form(None),
+    lat: Optional[str] = Form("33.6844"),
+    lon: Optional[str] = Form("73.0479"),
+    test_mode: Optional[str] = Form("false"),
+) -> Dict[str, Any]:
+    """
+    Accepts an uploaded video file, samples every 30th frame, and runs detection.
+    """
+    contents = await video.read()
+    filename = video.filename or "temp_video.mp4"
+    with open(filename, "wb") as f:
+        f.write(contents)
+
+    cap = cv2.VideoCapture(filename)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frame_interval = 30
+    frame_count = 0
+    
+    frame_results = []
+    overall_detected = False
+    max_confidence = 0.0
+    highest_severity = "none"
+    last_decision = {}
+    last_agent_trace = {}
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        if frame_count % frame_interval == 0:
+            temp_frame_path = f"temp_frame_{frame_count}.jpg"
+            cv2.imwrite(temp_frame_path, frame)
+            
+            timestamp = frame_count / fps
+            
+            try:
+                if hasattr(orchestrator.fire, "run"):
+                    fire_result = await orchestrator.fire.run({"image": temp_frame_path})
+                else:
+                    fire_result = {"action": "monitor", "severity": "none"}
+            except Exception as e:
+                fire_result = {"action": "monitor", "severity": "none"}
+                
+            if os.path.exists(temp_frame_path):
+                os.remove(temp_frame_path)
+                
+            is_detected = fire_result.get("action") in ("alert", "evacuate")
+            conf = 0.9 if fire_result.get("severity") == "high" else 0.6
+            sev = fire_result.get("severity", "none")
+            
+            if is_detected:
+                overall_detected = True
+            if conf > max_confidence:
+                max_confidence = conf
+            if sev == "high" or (sev == "medium" and highest_severity != "high"):
+                highest_severity = sev
+                
+            if is_detected:
+                frame_results.append({
+                    "timestamp": round(timestamp, 2),
+                    "confidence": conf,
+                    "boxes": [], # simplified
+                })
+                
+            last_agent_trace = fire_result
+
+        frame_count += 1
+
+    cap.release()
+    if os.path.exists(filename):
+        os.remove(filename)
+        
+    yolo_result = {
+        "detected": overall_detected,
+        "confidence": max_confidence,
+        "severity": highest_severity,
+    }
+    
+    try:
+        decision = decision_agent.decide(
+            detection_result=yolo_result,
+            weather_data={},
+            social_data={"text": social_text} if social_text else {},
+        )
+    except Exception as e:
+        decision = {
+            "confidence": yolo_result["confidence"],
+            "crisis_type": "fire",
+            "severity": yolo_result["severity"],
+            "action": "MONITOR" if not yolo_result["detected"] else "WARNING",
+            "recommended_action": "Safe Fallback",
+            "reasoning": f"Fallback triggered",
+            "all_classifiers": []
+        }
+
+    return {
+        "detected": overall_detected,
+        "confidence": decision.get("confidence", max_confidence),
+        "crisis_type": decision.get("crisis_type", "unknown"),
+        "severity": decision.get("severity", "none"),
+        "action": decision.get("action", "MONITOR"),
+        "recommended_action": decision.get("recommended_action", "Monitor"),
+        "reasoning": decision.get("reasoning", "No reasoning available"),
+        "agent_trace": last_agent_trace,
+        "all_classifiers": decision.get("all_classifiers", []),
+        "frame_results": frame_results,
+        "crisis_id": f"vid_crisis_{int(max_confidence * 100)}",
+        "allocation_plan": decision.get("allocation_plan", {}),
+        "simulation": decision.get("simulation", {"eta_reduction_minutes": 5, "traffic_reroute": True, "side_effects": "None"}),
+        "notifications": decision.get("notifications", [{"target": "public", "message": "Fire detected in video"}] if overall_detected else [])
+    }
+
 
 
 @router.post("/classify")

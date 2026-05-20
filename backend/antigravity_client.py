@@ -135,6 +135,16 @@ class AntigravityClient:
                 }
                 response["notifications"] = [{"target": "public", "message": f"Fire reported at {location}. Please avoid the area."}]
 
+        elif crisis_type == "smoke":
+            response["final_decision"] = "dispatch_scout_unit"
+            response["allocation_plan"] = {"fire_trucks": 1, "police": 1}
+            response["simulation"] = {
+                "eta_reduction_minutes": 5,
+                "traffic_reroute": False,
+                "side_effects": "Visibility warnings issued."
+            }
+            response["notifications"] = [{"target": "public", "message": f"Smoke reported at {location}. Drive carefully."}]
+
         elif crisis_type == "flood":
             if severity > 0.6:
                 response["final_decision"] = "deploy_swift_water_rescue_and_block_roads"
@@ -168,11 +178,11 @@ class AntigravityClient:
         obs_conf_before = 0.5
         obs_conf_after = 0.85 if not is_low_confidence else 0.35
         obs_reasoning = (
-            f"Observer scanned visual feed and social text. "
-            f"Detected crisis keywords and YOLO confidence of {severity:.2f}."
+            f"Observer: Detected {crisis_type} with {int(severity*100)}% confidence at location {location}. "
+            f"Social text and visual feed analyzed."
         )
         if is_low_confidence:
-            obs_reasoning = f"Observer scanned visual feed. Conflicting or very weak signals detected (Conf: {severity:.2f})."
+            obs_reasoning = f"Observer: Conflicting or very weak signals detected (Conf: {int(severity*100)}%)."
 
         observer_trace = {
             "agent_name": "Observer",

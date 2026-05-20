@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'screens/monitor_screen.dart' hide AppColors, ApiConfig;
 import 'screens/incidents_screen.dart';
 import 'screens/agent_screen.dart' hide AppColors, ApiConfig;
+import 'screens/analytics_screen.dart';
+import 'screens/dashboard_screen.dart';
 import 'services/alert_service.dart';
 import 'theme/app_colors.dart';
 
@@ -48,9 +50,11 @@ class _MainShellState extends State<MainShell> {
   bool _testModeEnabled = false;
 
   final List<Widget> _screens = [
+    const DashboardScreen(),
     const MonitorScreen(),
     const IncidentsScreen(),
     const AgentTracesScreen(),
+    const AnalyticsScreen(),
   ];
 
   @override
@@ -109,9 +113,11 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final List<String> _titles = [
+      'Dashboard Map',
       'CIRO Operations',
       'Incident Logs',
       'Agent Traces',
+      'Analytics',
     ];
 
     return Scaffold(
@@ -260,8 +266,13 @@ class _MainShellState extends State<MainShell> {
         elevation: 10,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
+            icon: Icon(Icons.map_outlined),
+            activeIcon: Icon(Icons.map),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.camera_alt_outlined),
+            activeIcon: Icon(Icons.camera_alt),
             label: 'Monitor',
           ),
           BottomNavigationBarItem(
@@ -273,6 +284,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.memory_outlined),
             activeIcon: Icon(Icons.memory),
             label: 'Agent',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics_outlined),
+            activeIcon: Icon(Icons.analytics),
+            label: 'Analytics',
           ),
         ],
         onTap: (index) {

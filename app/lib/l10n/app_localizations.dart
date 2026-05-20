@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
 import 'app_localizations_en.dart';
-import 'app_localizations_ur.dart';
 
 // ignore_for_file: type=lint
 
@@ -93,70 +92,13 @@ abstract class AppLocalizations {
       ];
 
   /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[
-    Locale('en'),
-    Locale('ur'),
-  ];
+  static const List<Locale> supportedLocales = <Locale>[Locale('en')];
 
-  /// No description provided for @appTitle.
+  /// The title of the application
   ///
   /// In en, this message translates to:
-  /// **'Fire Detection AI'**
+  /// **'CIRO Fire Orchestrator'**
   String get appTitle;
-
-  /// No description provided for @detect.
-  ///
-  /// In en, this message translates to:
-  /// **'Detect Fire'**
-  String get detect;
-
-  /// No description provided for @history.
-  ///
-  /// In en, this message translates to:
-  /// **'History'**
-  String get history;
-
-  /// No description provided for @fireDetected.
-  ///
-  /// In en, this message translates to:
-  /// **'Fire Detected!'**
-  String get fireDetected;
-
-  /// No description provided for @noFire.
-  ///
-  /// In en, this message translates to:
-  /// **'No Fire'**
-  String get noFire;
-
-  /// No description provided for @confidence.
-  ///
-  /// In en, this message translates to:
-  /// **'Confidence'**
-  String get confidence;
-
-  /// No description provided for @severity.
-  ///
-  /// In en, this message translates to:
-  /// **'Severity'**
-  String get severity;
-
-  /// No description provided for @high.
-  ///
-  /// In en, this message translates to:
-  /// **'High'**
-  String get high;
-
-  /// No description provided for @medium.
-  ///
-  /// In en, this message translates to:
-  /// **'Medium'**
-  String get medium;
-
-  /// No description provided for @low.
-  ///
-  /// In en, this message translates to:
-  /// **'Low'**
-  String get low;
 }
 
 class _AppLocalizationsDelegate
@@ -170,7 +112,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['en', 'ur'].contains(locale.languageCode);
+      <String>['en'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -181,8 +123,6 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   switch (locale.languageCode) {
     case 'en':
       return AppLocalizationsEn();
-    case 'ur':
-      return AppLocalizationsUr();
   }
 
   throw FlutterError(

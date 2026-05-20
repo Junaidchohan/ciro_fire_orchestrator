@@ -1,334 +1,183 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
-import '../theme/app_colors.dart';
+import '../services/event_bus.dart';
+
+// Instructions:
+// Please add the following dependencies to your pubspec.yaml:
+// flutter_map: ^6.1.0 (or latest compatible)
+// latlong2: ^0.9.0 (or latest compatible)
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
   @override
-  _DashboardScreenState createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _loading = true;
-
-  // Computed Stats
-  int _totalDetections = 0;
-  int _escalatedAlerts = 0;
-  double _avgConfidence = 0.0;
-  double _fireRate = 0.0;
-  List<FlSpot> _confidenceHistory = [];
+  final MapController _mapController = MapController();
+  List<dynamic> _crises = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadAndComputeStats();
+    _fetchCrises();
+    
+    EventBus().on<CrisisDetectedEvent>().listen((event) {
+      _fetchCrises();
+    });
   }
 
-  Future<void> _loadAndComputeStats() async {
-    setState(() => _loading = true);
+  Future<void> _fetchCrises() async {
+    setState(() => _isLoading = true);
     try {
-      // Instead of relying on a missing /stats endpoint, we aggregate from the traces we already have!
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/traces'));
-
+      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/crises'));
       if (response.statusCode == 200) {
-        final List<dynamic> traces = json.decode(response.body);
-
-        if (traces.isNotEmpty) {
-          int escalated = 0;
-          double totalConf = 0;
-          List<FlSpot> spots = [];
-
-          // Process up to the 15 most recent traces for the chart
-          final recentTraces = traces.take(15).toList().reversed.toList();
-
-          for (int i = 0; i < recentTraces.length; i++) {
-            final trace = recentTraces[i];
-            final conf = (trace['confidence_after'] as num?)?.toDouble() ?? 0.0;
-            totalConf += conf;
-
-            // Count traces that required high-level action or were flagged
-            if (conf > 0.6 || trace['step_type'] == 'EVALUATE') {
-              escalated++;
-            }
-
-            spots.add(FlSpot(i.toDouble(), conf * 100));
-          }
-
-          setState(() {
-            _totalDetections = traces.length;
-            _escalatedAlerts = escalated;
-            _avgConfidence = (totalConf / recentTraces.length) * 100;
-            _fireRate = (escalated / traces.length) * 100;
-            _confidenceHistory = spots;
-          });
-        }
+        final data = json.decode(response.body);
+        setState(() {
+          _crises = data['crises'] ?? [];
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint('Failed to load stats: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _isLoading = false);
     }
+  }
+
+  Color _getMarkerColor(String type) {
+    final lowerType = type.toLowerCase();
+    if (lowerType.contains('fire')) return Colors.red;
+    if (lowerType.contains('smoke')) return Colors.orange;
+    return Colors.blue;
+  }
+
+  void _showCrisisDetails(BuildContext context, dynamic crisis) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final allocations = crisis['allocation_plan'] ?? {};
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Crisis: ${crisis['type'] ?? 'Unknown'}',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Text('Severity: ${crisis['severity'] ?? 'N/A'}', style: const TextStyle(fontSize: 18)),
+              const SizedBox(height: 20),
+              const Text('Allocated Resources:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              if (allocations.isNotEmpty) ...[
+                if (allocations['fire_trucks'] != null)
+                  Text('- Fire Trucks: ${allocations['fire_trucks']}'),
+                if (allocations['ambulances'] != null)
+                  Text('- Ambulances: ${allocations['ambulances']}'),
+                if (allocations['police'] != null)
+                  Text('- Police Units: ${allocations['police']}'),
+              ] else ...[
+                const Text('No resources allocated yet.'),
+              ],
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          'Analytics Dashboard',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: AppColors.primary,
-        elevation: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)],
-            ),
-          ),
-        ),
+        title: const Text('Crisis Map Dashboard'),
+        backgroundColor: Colors.black87,
       ),
-      body: _loading
-          ? const Center(child: CupertinoActivityIndicator(radius: 16))
-          : RefreshIndicator(
-              onRefresh: _loadAndComputeStats,
-              color: AppColors.primary,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'System Overview',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+      body: Stack(
+        children: [
+          FlutterMap(
+            mapController: _mapController,
+            options: const MapOptions(
+              initialCenter: LatLng(33.6844, 73.0479),
+              initialZoom: 12.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.app',
+              ),
+              MarkerLayer(
+                markers: _crises.map((crisis) {
+                  double lat = 33.6844;
+                  double lon = 73.0479;
+                  
+                  if (crisis['lat'] != null && crisis['lon'] != null) {
+                    lat = double.tryParse(crisis['lat'].toString()) ?? lat;
+                    lon = double.tryParse(crisis['lon'].toString()) ?? lon;
+                  } else if (crisis['location'] != null) {
+                    // Attempt basic parse if location string "lat,lon" exists, else fallback
+                    final parts = crisis['location'].toString().split(',');
+                    if (parts.length == 2) {
+                      lat = double.tryParse(parts[0]) ?? lat;
+                      lon = double.tryParse(parts[1]) ?? lon;
+                    }
+                  }
 
-                    // Stats Grid
-                    Row(
-                      children: [
-                        _buildStatCard(
-                          'Total Detections',
-                          _totalDetections.toString(),
-                          Icons.history,
-                          AppColors.primary,
-                        ),
-                        const SizedBox(width: 12),
-                        _buildStatCard(
-                          'Escalated Alerts',
-                          _escalatedAlerts.toString(),
-                          Icons.warning_amber_rounded,
-                          AppColors.warning,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildStatCard(
-                          'Avg Confidence',
-                          '${_avgConfidence.toStringAsFixed(1)}%',
-                          Icons.analytics_outlined,
-                          AppColors.success,
-                        ),
-                        const SizedBox(width: 12),
-                        _buildStatCard(
-                          'Action Rate',
-                          '${_fireRate.toStringAsFixed(1)}%',
-                          Icons.local_fire_department_outlined,
-                          AppColors.primary,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Confidence History (Last 15 Events)',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
+                  return Marker(
+                    point: LatLng(lat, lon),
+                    width: 40,
+                    height: 40,
+                    child: GestureDetector(
+                      onTap: () => _showCrisisDetails(context, crisis),
+                      child: Icon(
+                        Icons.location_on,
+                        color: _getMarkerColor(crisis['type'] ?? ''),
+                        size: 40,
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Chart Card
-                    Container(
-                      height: 250,
-                      padding: const EdgeInsets.only(
-                        right: 24,
-                        left: 8,
-                        top: 24,
-                        bottom: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: _confidenceHistory.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'Not enough data to graph.',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            )
-                          : LineChart(_buildConfidenceChart()),
-                    ),
-                  ],
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          if (!_isLoading && _crises.isEmpty)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'No active crises',
+                  style: TextStyle(color: Colors.white, fontSize: 18),
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+          if (_isLoading)
+            const Center(
+              child: CircularProgressIndicator(),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 24, color: color),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              value,
-              style: GoogleFonts.outfit(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textMain,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
-    );
-  }
-
-  LineChartData _buildConfidenceChart() {
-    return LineChartData(
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: false,
-        horizontalInterval: 25,
-        getDrawingHorizontalLine: (value) =>
-            FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _fetchCrises,
+        backgroundColor: Colors.blueAccent,
+        child: const Icon(Icons.refresh),
       ),
-      titlesData: FlTitlesData(
-        show: true,
-        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ), // Hide X axis numbers for clean look
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 40,
-            getTitlesWidget: (value, meta) {
-              return Text(
-                '${value.toInt()}%',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 11,
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-      borderData: FlBorderData(show: false),
-      minX: 0,
-      maxX: (_confidenceHistory.length - 1).toDouble() > 0
-          ? (_confidenceHistory.length - 1).toDouble()
-          : 1,
-      minY: 0,
-      maxY: 100,
-      lineBarsData: [
-        LineChartBarData(
-          spots: _confidenceHistory,
-          isCurved: true,
-          color: AppColors.primary,
-          barWidth: 3,
-          isStrokeCapRound: true,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter: (spot, percent, barData, index) =>
-                FlDotCirclePainter(
-                  radius: 4,
-                  color: AppColors.surface,
-                  strokeWidth: 2,
-                  strokeColor: AppColors.primary,
-                ),
-          ),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary.withOpacity(0.3),
-                AppColors.primary.withOpacity(0.0),
-              ],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -1,12 +1,7 @@
 {
-  "appTitle": "Fire Detection AI",
-  "detect": "Detect Fire",
-  "history": "History",
-  "fireDetected": "Fire Detected!",
-  "noFire": "No Fire",
-  "confidence": "Confidence",
-  "severity": "Severity",
-  "high": "High",
-  "medium": "Medium",
-  "low": "Low"
+  "@@locale": "en",
+  "appTitle": "CIRO Fire Orchestrator",
+  "@appTitle": {
+    "description": "The title of the application"
+  }
 }

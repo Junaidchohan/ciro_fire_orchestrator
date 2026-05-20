@@ -1,8 +1,3 @@
-// =============================================================================
-// agent_traces_screen.dart
-// CIRO – Steve Jobs–inspired Agent Traces Screen (Null-Safe & Crash-Free)
-// =============================================================================
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
@@ -10,18 +5,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
+
+import '../config/api_config.dart';
+import '../services/event_bus.dart';
 import '../theme/app_colors.dart';
-
-// ---------------------------------------------------------------------------
-// ApiConfig fallback
-// ---------------------------------------------------------------------------
-class ApiConfig {
-  static const String baseUrl = 'http://localhost:8000';
-}
-
-// =============================================================================
-// MODEL
-// =============================================================================
 
 class TraceLog {
   final String? agentName;
@@ -62,10 +50,6 @@ class TraceLog {
   }
 }
 
-// =============================================================================
-// CONSTANTS
-// =============================================================================
-
 const _kSteps = ['OBSERVE', 'ANALYZE', 'DECIDE', 'ACT', 'EVALUATE'];
 
 const _kStepColors = {
@@ -84,10 +68,6 @@ const _kStepIcons = {
   'EVALUATE': Icons.bar_chart_outlined,
 };
 
-// =============================================================================
-// SCREEN
-// =============================================================================
-
 class AgentTracesScreen extends StatefulWidget {
   const AgentTracesScreen({super.key});
 
@@ -95,12 +75,11 @@ class AgentTracesScreen extends StatefulWidget {
   State<AgentTracesScreen> createState() => _AgentTracesScreenState();
 }
 
-class _AgentTracesScreenState extends State<AgentTracesScreen>
-    with SingleTickerProviderStateMixin {
+class _AgentTracesScreenState extends State<AgentTracesScreen> with SingleTickerProviderStateMixin {
   List<TraceLog> _traces = [];
   bool _loading = true;
-  String _filter = 'All';
   Timer? _timer;
+  StreamSubscription? _eventSub;
 
   late final AnimationController _progressCtrl;
   late final Animation<double> _progressAnim;
@@ -118,22 +97,26 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
       parent: _progressCtrl,
       curve: Curves.easeInOut,
     );
-    _fetch();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _fetch());
+
+    _fetchTraces();
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _fetchTraces());
+
+    _eventSub = EventBus().stream.listen((event) {
+      if (mounted) _fetchTraces();
+    });
   }
 
   @override
   void dispose() {
+    _eventSub?.cancel();
     _timer?.cancel();
     _progressCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetch() async {
+  Future<void> _fetchTraces() async {
     try {
-      final res = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/traces'))
-          .timeout(const Duration(seconds: 5));
+      final res = await http.get(Uri.parse('${ApiConfig.baseUrl}/traces')).timeout(const Duration(seconds: 5));
 
       if (!mounted) return;
       if (res.statusCode == 200) {
@@ -182,22 +165,7 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeOut,
     );
-    if (idx == _kSteps.length - 1) {
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        if (!mounted) return;
-        _progressCtrl.animateTo(
-          0,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeIn,
-        );
-        setState(() => _activeStep = -1);
-      });
-    }
   }
-
-  List<TraceLog> get _filtered => _filter == 'All'
-      ? _traces
-      : _traces.where((t) => t.stepType == _filter).toList();
 
   Color _bg(bool dark) => dark ? const Color(0xFF121212) : AppColors.background;
   Color _surface(bool dark) => dark ? const Color(0xFF1E1E1E) : AppColors.surface;
@@ -215,15 +183,24 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
         child: _loading
             ? _buildLoading(dark)
             : !hasTraces
-            ? _buildEmpty(dark)
-            : _buildContent(dark),
+                ? _buildEmpty(dark)
+                : _buildContent(dark),
       ),
     );
   }
 
   Widget _buildLoading(bool dark) {
-    return Center(
-      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: 5,
+      itemBuilder: (context, index) => Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        height: 120,
+        decoration: BoxDecoration(
+          color: dark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
     );
   }
 
@@ -237,8 +214,8 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
             Icon(Icons.timeline_outlined, size: 56, color: _secondary(dark)),
             const SizedBox(height: 20),
             Text(
-              'No agent traces yet',
-              style: TextStyle(
+              'No traces yet',
+              style: GoogleFonts.outfit(
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
                 color: _label(dark),
@@ -249,7 +226,7 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
             Text(
               'Upload an image and click Detect\nto start the pipeline.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: GoogleFonts.outfit(
                 fontSize: 15,
                 color: _secondary(dark),
                 height: 1.5,
@@ -263,7 +240,7 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
 
   Widget _buildContent(bool dark) {
     return RefreshIndicator(
-      onRefresh: _fetch,
+      onRefresh: _fetchTraces,
       color: AppColors.primary,
       backgroundColor: _surface(dark),
       child: CustomScrollView(
@@ -274,7 +251,7 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
               child: Text(
                 'Agent Pipeline',
-                style: TextStyle(
+                style: GoogleFonts.outfit(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
                   color: _label(dark),
@@ -297,46 +274,24 @@ class _AgentTracesScreenState extends State<AgentTracesScreen>
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          SliverToBoxAdapter(
-            child: _FilterRow(
-              selected: _filter,
-              dark: dark,
-              surface: _surface(dark),
-              secondary: _secondary(dark),
-              onChanged: (f) => setState(() => _filter = f),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 12)),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-            sliver: _filtered.isEmpty
-                ? SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 32),
-                      child: Text(
-                        'No traces for "$_filter"',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15, color: _secondary(dark)),
-                      ),
-                    ),
-                  )
-                : SliverList(
-                    delegate: SliverChildBuilderDelegate((context, i) {
-                      final t = _filtered[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _TraceCard(
-                          trace: t,
-                          dark: dark,
-                          surface: _surface(dark),
-                          label: _label(dark),
-                          secondary: _secondary(dark),
-                          onTap: () =>
-                              setState(() => t.isExpanded = !t.isExpanded),
-                        ),
-                      );
-                    }, childCount: _filtered.length),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final t = _traces[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TraceCard(
+                    trace: t,
+                    dark: dark,
+                    surface: _surface(dark),
+                    label: _label(dark),
+                    secondary: _secondary(dark),
+                    onTap: () => setState(() => t.isExpanded = !t.isExpanded),
                   ),
+                );
+              }, childCount: _traces.length),
+            ),
           ),
         ],
       ),
@@ -489,8 +444,8 @@ class _StepCapsule extends StatelessWidget {
               color: isActive
                   ? color
                   : isComplete
-                  ? color.withOpacity(0.15)
-                  : (dark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.05)),
+                      ? color.withOpacity(0.15)
+                      : (dark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.05)),
               borderRadius: BorderRadius.circular(14),
               boxShadow: isActive
                   ? [
@@ -515,14 +470,14 @@ class _StepCapsule extends StatelessWidget {
               color: isActive
                   ? Colors.white
                   : isComplete
-                  ? color
-                  : secondary,
+                      ? color
+                      : secondary,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             _shortLabel(step),
-            style: TextStyle(
+            style: GoogleFonts.outfit(
               fontSize: 9,
               fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
               color: isActive ? color : secondary,
@@ -535,85 +490,13 @@ class _StepCapsule extends StatelessWidget {
   }
 
   String _shortLabel(String s) => switch (s) {
-    'OBSERVE' => 'OBSERVE',
-    'ANALYZE' => 'ANALYZE',
-    'DECIDE' => 'DECIDE',
-    'ACT' => 'ACT',
-    'EVALUATE' => 'EVAL',
-    _ => s,
-  };
-}
-
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({
-    required this.selected,
-    required this.dark,
-    required this.surface,
-    required this.secondary,
-    required this.onChanged,
-  });
-
-  final String selected;
-  final bool dark;
-  final Color surface;
-  final Color secondary;
-  final ValueChanged<String> onChanged;
-
-  static const _chips = ['All', ..._kSteps];
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: _chips.map((chip) {
-          final isSelected = selected == chip;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => onChanged(chip),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : surface,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.25),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ]
-                      : [
-                          BoxShadow(
-                            color: dark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.05),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                ),
-                child: Text(
-                  chip,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: isSelected ? Colors.white : secondary,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
+        'OBSERVE' => 'OBSERVE',
+        'ANALYZE' => 'ANALYZE',
+        'DECIDE' => 'DECIDE',
+        'ACT' => 'ACT',
+        'EVALUATE' => 'EVAL',
+        _ => s,
+      };
 }
 
 class _TraceCard extends StatelessWidget {
@@ -654,7 +537,7 @@ class _TraceCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 240),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         decoration: BoxDecoration(
           color: surface,
           borderRadius: BorderRadius.circular(16),
@@ -676,7 +559,7 @@ class _TraceCard extends StatelessWidget {
                 const Spacer(),
                 Text(
                   _time(trace.timestamp),
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                     fontSize: 13,
                     color: secondary,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -687,7 +570,7 @@ class _TraceCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               trace.agentName ?? 'Unknown',
-              style: TextStyle(
+              style: GoogleFonts.outfit(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: label,
@@ -700,7 +583,7 @@ class _TraceCard extends StatelessWidget {
               curve: Curves.easeOut,
               child: Text(
                 trace.reasoning ?? '',
-                style: TextStyle(fontSize: 14, color: secondary, height: 1.45),
+                style: GoogleFonts.outfit(fontSize: 14, color: secondary, height: 1.45),
                 maxLines: trace.isExpanded ? null : 2,
                 overflow: trace.isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
               ),
@@ -713,7 +596,7 @@ class _TraceCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   trace.confidenceBefore != null ? '${(trace.confidenceBefore! * 100).toStringAsFixed(0)}%' : 'N/A',
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                     fontSize: 13,
                     color: secondary,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -727,7 +610,7 @@ class _TraceCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   trace.confidenceAfter != null ? '${(trace.confidenceAfter! * 100).toStringAsFixed(0)}%' : 'N/A',
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: _stepColor,
@@ -735,16 +618,9 @@ class _TraceCard extends StatelessWidget {
                   ),
                 ),
                 if (hasBigDelta) ...[
-                  const SizedBox(width: 8),
-                  _DeltaBadge(pct: (deltaValue! * 100).round()),
+                  const Spacer(),
+                  _DeltaBadge(delta: deltaValue!),
                 ],
-                const Spacer(),
-                if ((trace.reasoning ?? '').length > 80)
-                  Icon(
-                    trace.isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: secondary,
-                  ),
               ],
             ),
           ],
@@ -762,18 +638,19 @@ class _StepBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
         step,
-        style: TextStyle(
+        style: GoogleFonts.outfit(
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: color,
-          letterSpacing: 0.4,
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -787,24 +664,21 @@ class _ConfidenceDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 6,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Stack(
-          children: [
-            Container(color: color.withOpacity(0.12)),
-            FractionallySizedBox(
-              widthFactor: value.clamp(0.0, 1.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
-          ],
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+      ),
+      child: Center(
+        child: Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withOpacity(value),
+          ),
         ),
       ),
     );
@@ -812,37 +686,32 @@ class _ConfidenceDot extends StatelessWidget {
 }
 
 class _DeltaBadge extends StatelessWidget {
-  const _DeltaBadge({required this.pct});
-  final int pct;
+  const _DeltaBadge({required this.delta});
+  final double delta;
 
   @override
   Widget build(BuildContext context) {
-    final gain = pct >= 0;
-    final color = gain ? AppColors.success : AppColors.error;
-    final label = gain ? '+$pct%' : '$pct%';
+    final isPos = delta > 0;
+    final color = isPos ? AppColors.success : AppColors.error;
+    final icon = isPos ? Icons.trending_up : Icons.trending_down;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-        gradient: gain ? null : AppColors.fireAlertGradient,
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            gain ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-            size: 10,
-            color: gain ? color : Colors.white,
-          ),
-          const SizedBox(width: 2),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
           Text(
-            label,
-            style: TextStyle(
+            '${isPos ? '+' : ''}${(delta * 100).toStringAsFixed(0)}%',
+            style: GoogleFonts.outfit(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: gain ? color : Colors.white,
+              color: color,
             ),
           ),
         ],

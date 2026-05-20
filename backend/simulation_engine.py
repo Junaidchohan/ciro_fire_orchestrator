@@ -53,6 +53,16 @@ def simulate_action(crisis_type: str, location: str, allocation_plan: Dict[str, 
         side_effects = f"Mild congestion on alternate routes near {location}"
         before_state = "Active blaze spreading. 0% containment. High civilian exposure risk."
         after_state = "Projected containment at 45% within 1 hour. Evacuation initiated."
+    # Slower response for smoke
+    elif "smoke" in crisis_type_lower:
+        traffic_reroute = {
+            "affected_roads": [f"{location} Access Road"], 
+            "congestion_reduction": "10%"
+        }
+        eta_reduction_minutes = 5
+        side_effects = "Minor visibility issues."
+        before_state = "Smoke reported. Possible early-stage fire."
+        after_state = "Scout unit on scene. Visibility clearing."
     # Slower response for flood
     elif "flood" in crisis_type_lower:
         traffic_reroute = {
