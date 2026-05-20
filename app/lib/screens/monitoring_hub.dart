@@ -1,1080 +1,648 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../theme/app_colors.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:io';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import '../config/api_config.dart';
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
-import 'history_screen.dart';
 
-class MonitoringHub extends StatefulWidget {
-  const MonitoringHub({super.key});
-
-  @override
-  State<MonitoringHub> createState() => _MonitoringHubState();
+// --- Configuration & Theming ---
+class ApiConfig {
+  static const String baseUrl =
+      'http://10.0.2.2:8000'; // Use 10.0.2.2 for Android emulator, or your Cloud Run URL
+  static const String detect = '$baseUrl/detect';
+  static const String verifyCrisis = '$baseUrl/verify_crisis';
 }
 
-class _MonitoringHubState extends State<MonitoringHub>
-    with SingleTickerProviderStateMixin {
-  // ── detection state ─────────────────────────────────────────────────────────
-  bool _loading = false;
-  Uint8List? _selectedImageBytes;
-  String _result = '';
-  double _confidence = 0.0;
-  String? _severity;
-  String? _action;
-  String? _recommendation;
-  File? _selectedImage;
+class AppColors {
+  static const Color primary = Color(0xFFD32F2F); // CIRO Red
+  static const Color background = Color(0xFFF5F5F7);
+  static const Color surface = Colors.white;
+  static const Color textMain = Color(0xFF1D1D1F);
+  static const Color textSecondary = Color(0xFF86868B);
+  static const Color success = Color(0xFF34C759);
+  static const Color warning = Color(0xFFFF9500);
+  static const Color info = Color(0xFF007AFF);
+}
 
-  // ── auto-workflow state ─────────────────────────────────────────────────────
-  Timer? _autoWorkflowTimer;
-  bool _autoWorkflowRunning = false;
-  int _autoWorkflowCount = 0;
-
-  // ── simulation state ────────────────────────────────────────────────────────
-  bool _simLoading = false;
-  Map<String, dynamic>? _simResult;
-  // mock: selected crisis type for demo
-  String _selectedCrisis = 'fire';
-  // mock: default resource allocation for demo
-  final Map<String, int> _mockResources = {
-    'fire_trucks': 3,
-    'ambulances': 2,
-    'police_units': 4,
-    'water_tankers': 2,
-  };
-
-  late final AnimationController _simAnimCtrl;
-  late final Animation<double> _simFadeAnim;
+class MonitorScreen extends StatefulWidget {
+  const MonitorScreen({Key? key}) : super(key: key);
 
   @override
-  void initState() {
-    super.initState();
-    _simAnimCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _simFadeAnim = CurvedAnimation(
-      parent: _simAnimCtrl,
-      curve: Curves.easeInOut,
-    );
-  }
+  State<MonitorScreen> createState() => _MonitorScreenState();
+}
+
+class _MonitorScreenState extends State<MonitorScreen> {
+  // --- State ---
+  File? _selectedImage;
+  bool _isDetecting = false;
+  bool _testMode = false;
+  Map<String, dynamic>? _detectionResult;
+  String? _currentCrisisId;
+
+  // --- Controllers ---
+  final TextEditingController _socialController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController(
+    text: "G-10, Islamabad",
+  );
+
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
-    _autoWorkflowTimer?.cancel();
-    _simAnimCtrl.dispose();
+    _socialController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
-  // ── image pick / detect ─────────────────────────────────────────────────────
-  void _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      final bytes = await picked.readAsBytes();
-      setState(() {
-        _selectedImageBytes = bytes;
-        _result = '';
-        _confidence = 0.0;
-        _severity = null;
-        _action = null;
-        _recommendation = null;
-        _selectedImage = File(picked.path);
-      });
-      _detectFire();
+  // --- Helpers ---
+  Map<String, String> _getLatLonFromLocation(String locationString) {
+    // Simple mock geocoder based on string matching
+    final loc = locationString.toLowerCase();
+    if (loc.contains("islamabad")) {
+      return {"lat": "33.6844", "lon": "73.0479"};
+    } else if (loc.contains("karachi")) {
+      return {"lat": "24.8607", "lon": "67.0011"};
+    } else {
+      return {"lat": "31.5204", "lon": "74.3587"}; // Default Lahore
     }
   }
 
-  Future<void> _detectFire() async {
-    if (_selectedImageBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an image first')),
+  Future<void> _pickImage(ImageSource source) async {
+    final pickedFile = await _picker.pickImage(
+      source: source,
+      imageQuality: 80,
+    );
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+        _detectionResult = null; // Clear previous results on new image
+      });
+    }
+  }
+
+  // --- API Calls ---
+  Future<void> _runDetection() async {
+    if (_selectedImage == null) {
+      _showSnackBar(
+        'Please select or capture an image first.',
+        AppColors.warning,
       );
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() {
+      _isDetecting = true;
+      _detectionResult = null;
+    });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse(ApiConfig.detect));
+
+      // 1. Attach Image
       request.files.add(
-        http.MultipartFile.fromBytes(
-          'image',
-          _selectedImageBytes!,
-          filename: 'image.jpg',
-        ),
+        await http.MultipartFile.fromPath('image', _selectedImage!.path),
       );
-      var response = await request.send();
-      var result = json.decode(await response.stream.bytesToString());
 
-      if (mounted) {
+      // 2. Attach Contextual Fields
+      if (_socialController.text.isNotEmpty) {
+        request.fields['social_text'] = _socialController.text;
+      }
+
+      final coords = _getLatLonFromLocation(_locationController.text);
+      request.fields['lat'] = coords['lat']!;
+      request.fields['lon'] = coords['lon']!;
+      request.fields['test_mode'] = _testMode.toString();
+
+      // 3. Send and Await
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
         setState(() {
-          bool detected = result['detected'] == true;
-          _confidence = (result['confidence'] as num?)?.toDouble() ?? 0.0;
-          _severity = (result['severity'] as String?) ?? 'none';
-          _action = result['action'] as String?;
-          _recommendation = result['recommendation'] as String?;
-          _result = detected ? '🔥 FIRE DETECTED!' : '✅ No fire detected';
-          _loading = false;
+          _detectionResult = data;
+          _currentCrisisId = data['crisis_id'];
         });
-
-        // Show result dialog only if not in auto-workflow mode
-        if (!_autoWorkflowRunning) {
-          _showResultDialog();
-        }
+      } else {
+        _showSnackBar(
+          'Server Error: ${response.statusCode}',
+          AppColors.primary,
+        );
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      _showSnackBar('Connection failed: $e', AppColors.primary);
+    } finally {
+      setState(() {
+        _isDetecting = false;
+      });
     }
   }
 
-  // ── auto-workflow methods ───────────────────────────────────────────────────
-  void _startAutoWorkflow() {
-    if (_selectedImageBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload an image first')),
-      );
-      return;
-    }
-
-    setState(() {
-      _autoWorkflowRunning = true;
-      _autoWorkflowCount = 0;
-    });
-
-    // Run detection immediately, then every 10 seconds
-    _detectFire();
-
-    _autoWorkflowTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      if (mounted && _autoWorkflowRunning && _selectedImageBytes != null) {
-        setState(() => _autoWorkflowCount++);
-        _detectFire();
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Auto-workflow started - detection every 10 seconds'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _stopAutoWorkflow() {
-    _autoWorkflowTimer?.cancel();
-    setState(() {
-      _autoWorkflowRunning = false;
-      _autoWorkflowCount = 0;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Auto-workflow stopped'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _showResultDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        Color severityColor = Colors.grey;
-        if (_severity != null) {
-          switch (_severity!.toLowerCase()) {
-            case 'high':
-              severityColor = Colors.redAccent;
-              break;
-            case 'medium':
-              severityColor = Colors.orangeAccent;
-              break;
-            case 'low':
-              severityColor = Colors.yellowAccent;
-              break;
-          }
-        }
-
-        Color actionColor = Colors.cyanAccent;
-        String actionDisplay = _action?.toUpperCase() ?? 'NONE';
-        if (_action != null) {
-          switch (_action!.toUpperCase()) {
-            case 'EVACUATE':
-              actionColor = Colors.red;
-              break;
-            case 'WARNING':
-            case 'WARN':
-              actionColor = Colors.orange;
-              break;
-            case 'MONITOR':
-              actionColor = Colors.green;
-              break;
-          }
-        }
-
-        return AlertDialog(
-          backgroundColor: AppColors.surfaceElevated,
-          title: Text(
-            'Detection Result',
-            style: GoogleFonts.outfit(color: AppColors.textPrimary),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_selectedImageBytes != null)
-                Image.memory(
-                  _selectedImageBytes!,
-                  height: 150,
-                  fit: BoxFit.cover,
-                ),
-              const SizedBox(height: 16),
-              Text(
-                _result,
-                style: GoogleFonts.outfit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: _result.contains('FIRE')
-                      ? Colors.redAccent
-                      : Colors.greenAccent,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Confidence: ${(_confidence * 100).toStringAsFixed(1)}%',
-                style: GoogleFonts.outfit(color: AppColors.textPrimary),
-              ),
-              if (_severity != null && _severity != 'none') ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: severityColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: severityColor.withOpacity(0.4),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Text(
-                    'SEVERITY: ${_severity!.toUpperCase()}',
-                    style: GoogleFonts.outfit(
-                      color: severityColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                'Recommended Action: $actionDisplay',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  color: actionColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              if (_recommendation != null && _recommendation!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _recommendation!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.outfit(
-                    color: AppColors.textPrimary.withOpacity(0.85),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Close',
-                style: GoogleFonts.outfit(color: AppColors.primary),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _pickVideo() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Video upload coming soon!')));
-  }
-
-  // ── simulation ──────────────────────────────────────────────────────────────
-  Future<void> _runSimulation() async {
-    setState(() {
-      _simLoading = true;
-      _simResult = null;
-    });
-    _simAnimCtrl.reset();
+  Future<void> _simulateFalseAlarm() async {
+    if (_currentCrisisId == null) return;
 
     try {
-      final body = json.encode({
-        'crisis_type': _selectedCrisis,
-        'allocated_resources': _mockResources,
-        'location': 'Downtown District',
-      });
       final response = await http.post(
-        Uri.parse(ApiConfig.simulate),
+        Uri.parse(ApiConfig.verifyCrisis),
         headers: {'Content-Type': 'application/json'},
-        body: body,
+        body: jsonEncode({"crisis_id": _currentCrisisId, "verified": false}),
       );
+
       if (response.statusCode == 200) {
+        _showSnackBar(
+          '🛑 False alarm recorded and retracted.',
+          AppColors.textMain,
+        );
         setState(() {
-          _simResult = json.decode(response.body) as Map<String, dynamic>;
-          _simLoading = false;
+          _detectionResult = null; // Clear screen after retraction
+          _currentCrisisId = null;
         });
-        _simAnimCtrl.forward();
-      } else {
-        throw Exception('Status ${response.statusCode}');
       }
     } catch (e) {
-      setState(() => _simLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Simulation error: $e')));
+      _showSnackBar('Failed to retract crisis: $e', AppColors.primary);
     }
   }
 
-  // ── helpers ─────────────────────────────────────────────────────────────────
-  Widget _buildCard({
-    required IconData icon,
-    required String title,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: AppColors.surfaceElevated,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.5), width: 1.5),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [color.withOpacity(0.2), Colors.transparent],
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 48, color: color),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
+  void _showSnackBar(String message, Color bgColor) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: bgColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
 
-  /// Builds a single state column (before or after) for the comparison panel.
-  Widget _buildStateColumn({
-    required String label,
-    required Map<String, dynamic> state,
-    required Color accentColor,
-    required IconData headerIcon,
-  }) {
-    final rows = <Map<String, dynamic>>[
-      {
-        'key': 'Affected Population',
-        'val': state['affected_population']?.toString() ?? '—',
-        'icon': Icons.people_alt_rounded,
-      },
-      {
-        'key': 'Traffic Congestion',
-        'val': (state['traffic_congestion'] as String? ?? '—').toUpperCase(),
-        'icon': Icons.traffic_rounded,
-      },
-      {
-        'key': 'Emergency Response',
-        'val': (state['emergency_response'] as String? ?? '—')
-            .replaceAll('_', ' ')
-            .toUpperCase(),
-        'icon': Icons.local_hospital_rounded,
-      },
-      {
-        'key': 'Est. Damage',
-        'val': (state['estimated_damage'] as String? ?? '—').toUpperCase(),
-        'icon': Icons.bar_chart_rounded,
-      },
-      if (state.containsKey('improvement'))
-        {
-          'key': 'Improvement',
-          'val': state['improvement'],
-          'icon': Icons.trending_down_rounded,
-        },
-    ];
-
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: accentColor.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: accentColor.withOpacity(0.4), width: 1.2),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Column header
-            Row(
-              children: [
-                Icon(headerIcon, color: accentColor, size: 20),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: accentColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // Metric rows
-            ...rows.map(
-              (r) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      r['icon'] as IconData,
-                      size: 16,
-                      color: AppColors.textPrimary.withOpacity(0.55),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            r['key'] as String,
-                            style: GoogleFonts.outfit(
-                              fontSize: 11,
-                              color: AppColors.textPrimary.withOpacity(0.55),
-                            ),
-                          ),
-                          Text(
-                            r['val'] as String,
-                            style: GoogleFonts.outfit(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Renders the impact metric chips row.
-  Widget _buildImpactChips(Map<String, dynamic> metrics) {
-    final chips = <Map<String, dynamic>>[
-      {
-        'label': '${metrics['response_time_improvement_pct']}% faster response',
-        'icon': Icons.speed_rounded,
-        'color': Colors.greenAccent,
-      },
-      {
-        'label': '${metrics['population_protected']} people protected',
-        'icon': Icons.shield_rounded,
-        'color': Colors.blueAccent,
-      },
-      {
-        'label': '${metrics['total_resources_deployed']} resources deployed',
-        'icon': Icons.local_fire_department_rounded,
-        'color': Colors.orangeAccent,
-      },
-      if (metrics['congestion_reduced'] == true)
-        {
-          'label': 'Congestion reduced',
-          'icon': Icons.directions_car_rounded,
-          'color': Colors.purpleAccent,
-        },
-      if (metrics['damage_downgraded'] == true)
-        {
-          'label': 'Damage downgraded',
-          'icon': Icons.trending_down_rounded,
-          'color': Colors.tealAccent,
-        },
-    ];
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: chips.map((c) {
-        final color = c['color'] as Color;
-        return Chip(
-          avatar: Icon(c['icon'] as IconData, size: 14, color: color),
-          label: Text(
-            c['label'] as String,
-            style: GoogleFonts.outfit(fontSize: 11, color: color),
-          ),
-          backgroundColor: color.withOpacity(0.12),
-          side: BorderSide(color: color.withOpacity(0.4), width: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
-      }).toList(),
-    );
-  }
-
-  /// Builds the auto-workflow control panel
-  Widget _buildAutoWorkflowPanel() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: _autoWorkflowRunning
-              ? Colors.greenAccent.withOpacity(0.5)
-              : Colors.grey.withOpacity(0.3),
-          width: 1.5,
-        ),
-        boxShadow: _autoWorkflowRunning
-            ? [
-                BoxShadow(
-                  color: Colors.greenAccent.withOpacity(0.1),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                ),
-              ]
-            : [],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _autoWorkflowRunning ? Icons.play_circle_filled : Icons.timer,
-                color: _autoWorkflowRunning ? Colors.greenAccent : Colors.grey,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Auto Workflow Detection',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    if (_autoWorkflowRunning)
-                      Text(
-                        'Running • ${_autoWorkflowCount} detections completed',
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          color: Colors.greenAccent,
-                        ),
-                      )
-                    else
-                      Text(
-                        'Upload an image to get started',
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _autoWorkflowRunning ? null : _startAutoWorkflow,
-                  icon: Icon(
-                    Icons.play_arrow,
-                    color: _autoWorkflowRunning ? Colors.grey : Colors.white,
-                  ),
-                  label: Text(
-                    'Start Auto Workflow',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: _autoWorkflowRunning ? Colors.grey : Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _autoWorkflowRunning
-                        ? Colors.grey.withOpacity(0.3)
-                        : Colors.greenAccent,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _autoWorkflowRunning ? _stopAutoWorkflow : null,
-                  icon: Icon(
-                    Icons.stop_circle,
-                    color: _autoWorkflowRunning ? Colors.white : Colors.grey,
-                  ),
-                  label: Text(
-                    'Stop Auto Workflow',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: _autoWorkflowRunning ? Colors.white : Colors.grey,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _autoWorkflowRunning
-                        ? Colors.redAccent
-                        : Colors.grey.withOpacity(0.3),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_autoWorkflowRunning)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.greenAccent.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.greenAccent.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outlined,
-                      size: 14,
-                      color: Colors.greenAccent,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Detection runs every 10 seconds. Results shown in status bar.',
-                        style: GoogleFonts.outfit(
-                          fontSize: 11,
-                          color: Colors.greenAccent.withOpacity(0.8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Simulation panel widget embedded in the ListView.
-  Widget _buildSimulationPanel() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.cyanAccent.withOpacity(0.35),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.cyanAccent.withOpacity(0.06),
-            blurRadius: 20,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Panel header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-              gradient: LinearGradient(
-                colors: [
-                  Colors.cyanAccent.withOpacity(0.15),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Colors.cyanAccent,
-                  size: 22,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Action Simulation',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                // Crisis type selector
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCrisis,
-                    dropdownColor: AppColors.surfaceElevated,
-                    style: GoogleFonts.outfit(
-                      color: Colors.cyanAccent,
-                      fontSize: 13,
-                    ),
-                    icon: const Icon(
-                      Icons.expand_more,
-                      color: Colors.cyanAccent,
-                      size: 18,
-                    ),
-                    items: ['fire', 'flood', 'heatwave'].map((c) {
-                      return DropdownMenuItem(
-                        value: c,
-                        child: Text(c[0].toUpperCase() + c.substring(1)),
-                      );
-                    }).toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _selectedCrisis = v);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Run simulation button
-                ElevatedButton.icon(
-                  onPressed: _simLoading ? null : _runSimulation,
-                  icon: _simLoading
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.black,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.bolt_rounded,
-                          size: 16,
-                          color: Colors.black,
-                        ),
-                  label: Text(
-                    _simLoading ? 'Simulating…' : 'Run',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.black,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.cyanAccent,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Simulation results (animated)
-          if (_simResult != null)
-            FadeTransition(
-              opacity: _simFadeAnim,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── before / after columns ───────────────────────────────
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildStateColumn(
-                          label: 'BEFORE',
-                          state: _simResult!['before'] as Map<String, dynamic>,
-                          accentColor: Colors.redAccent,
-                          headerIcon: Icons.warning_amber_rounded,
-                        ),
-                        // Arrow divider
-                        Padding(
-                          padding: const EdgeInsets.only(top: 40),
-                          child: Icon(
-                            Icons.arrow_forward_rounded,
-                            color: Colors.cyanAccent.withOpacity(0.7),
-                            size: 26,
-                          ),
-                        ),
-                        _buildStateColumn(
-                          label: 'AFTER',
-                          state: _simResult!['after'] as Map<String, dynamic>,
-                          accentColor: Colors.greenAccent,
-                          headerIcon: Icons.check_circle_rounded,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── simulation time badge ────────────────────────────────
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.timer_rounded,
-                          size: 14,
-                          color: Colors.cyanAccent,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Simulated in ${_simResult!['simulation_time_seconds']}s',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            color: AppColors.textPrimary.withOpacity(0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 12),
-                    Divider(color: Colors.white.withOpacity(0.08)),
-                    const SizedBox(height: 10),
-
-                    // ── impact metrics ───────────────────────────────────────
-                    Text(
-                      'Impact Metrics',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: AppColors.textPrimary.withOpacity(0.75),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildImpactChips(
-                      _simResult!['impact_metrics'] as Map<String, dynamic>,
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else if (!_simLoading)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: Text(
-                'Select a crisis type and press Run to see before/after impact.',
-                style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  color: AppColors.textPrimary.withOpacity(0.5),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
+  // --- UI Builders ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          'AI Monitoring Center',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+        title: const Text(
+          'CIRO Operations',
+          style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        ),
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildImageUploader(),
+              const SizedBox(height: 20),
+              _buildContextControls(),
+              const SizedBox(height: 24),
+              _buildDetectButton(),
+              const SizedBox(height: 24),
+              if (_detectionResult != null) _buildResultsSection(),
+            ],
           ),
         ),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(gradient: AppColors.appBarGradient),
-        ),
       ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // ── monitoring cards grid ────────────────────────────────────
-              if (_selectedImage != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.file(
-                    _selectedImage!,
-                    height: 200,
-                    fit: BoxFit.cover,
+    );
+  }
+
+  Widget _buildImageUploader() {
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _selectedImage != null
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.file(_selectedImage!, fit: BoxFit.cover),
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => setState(() => _selectedImage = null),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.satellite_alt_outlined,
+                  color: AppColors.textSecondary,
+                  size: 48,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Upload Incident Imagery',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 16),
-              ],
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildCard(
-                    icon: Icons.videocam,
-                    title: 'Start Live Monitoring',
-                    color: Colors.redAccent,
-                    onTap: () => Navigator.pushNamed(context, '/camera'),
-                  ),
-                  _buildCard(
-                    icon: Icons.image,
-                    title: 'Upload Image',
-                    color: Colors.blueAccent,
-                    onTap: _pickImage,
-                  ),
-                  _buildCard(
-                    icon: Icons.video_library,
-                    title: 'Upload Video',
-                    color: Colors.purpleAccent,
-                    onTap: _pickVideo,
-                  ),
-                  _buildCard(
-                    icon: Icons.history,
-                    title: 'View Detection Logs',
-                    color: Colors.orangeAccent,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
-                    ),
-                  ),
-                  _buildCard(
-                    icon: Icons.psychology,
-                    title: 'Agent Reasoning Trace',
-                    color: Colors.greenAccent,
-                    onTap: () => Navigator.pushNamed(context, '/traces'),
-                  ),
-                  _buildCard(
-                    icon: Icons.warning_amber_rounded,
-                    title: 'Incident History',
-                    color: Colors.amberAccent,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HistoryScreen()),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              // ── auto workflow section ────────────────────────────────────
-              _buildAutoWorkflowPanel(),
-
-              // ── section label ────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12, top: 8),
-                child: Row(
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 4,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: Colors.cyanAccent,
-                        borderRadius: BorderRadius.circular(4),
+                    ElevatedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                      label: const Text('Camera'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.textMain,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Crisis Action Simulation',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: AppColors.textPrimary,
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library_outlined, size: 18),
+                      label: const Text('Gallery'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.background,
+                        foregroundColor: AppColors.textMain,
+                        elevation: 0,
                       ),
                     ),
                   ],
                 ),
-              ),
-
-              // ── simulation panel ─────────────────────────────────────────
-              _buildSimulationPanel(),
-            ],
-          ),
-
-          // Loading overlay (for detect)
-          if (_loading)
-            Container(
-              color: Colors.black54,
-              child: const Center(
-                child: CircularProgressIndicator(color: AppColors.primary),
-              ),
+              ],
             ),
+    );
+  }
+
+  Widget _buildContextControls() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
+            child: Text(
+              'Incident Context',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMain,
+              ),
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: TextField(
+              controller: _socialController,
+              decoration: InputDecoration(
+                hintText: 'Describe crisis (e.g., flash flood in G-10)',
+                hintStyle: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                ),
+                filled: true,
+                fillColor: AppColors.background,
+                prefixIcon: const Icon(
+                  Icons.chat_bubble_outline,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: TextField(
+              controller: _locationController,
+              decoration: InputDecoration(
+                hintText: 'Location (e.g., G-10, Islamabad)',
+                hintStyle: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                ),
+                filled: true,
+                fillColor: AppColors.background,
+                prefixIcon: const Icon(
+                  Icons.location_on_outlined,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+
+          SwitchListTile(
+            title: const Text(
+              'Test Mode',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text(
+              'Flags logs as test data',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            value: _testMode,
+            activeColor: AppColors.primary,
+            onChanged: (val) => setState(() => _testMode = val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetectButton() {
+    return SizedBox(
+      height: 56,
+      child: ElevatedButton(
+        onPressed: _isDetecting ? null : _runDetection,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 2,
+        ),
+        child: _isDetecting
+            ? const CupertinoActivityIndicator(color: Colors.white)
+            : const Text(
+                'Initiate Detection Pipeline',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildResultsSection() {
+    final bool detected = _detectionResult!['detected'] ?? false;
+    final String action = _detectionResult!['action'] ?? 'UNKNOWN';
+    final double confidence = _detectionResult!['confidence'] ?? 0.0;
+
+    // Extract Antigravity Data
+    final Map<String, dynamic> allocation =
+        _detectionResult!['allocation_plan'] ?? {};
+    final Map<String, dynamic> simulation =
+        _detectionResult!['simulation'] ?? {};
+    final List<dynamic> notifications =
+        _detectionResult!['notifications'] ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Primary YOLO Status Card
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: detected
+                ? AppColors.primary.withOpacity(0.05)
+                : AppColors.success.withOpacity(0.05),
+            border: Border.all(
+              color: detected
+                  ? AppColors.primary.withOpacity(0.3)
+                  : AppColors.success.withOpacity(0.3),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    detected
+                        ? Icons.warning_rounded
+                        : Icons.check_circle_rounded,
+                    color: detected ? AppColors.primary : AppColors.success,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    detected ? 'CRISIS DETECTED' : 'AREA CLEAR',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: detected ? AppColors.primary : AppColors.success,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Recommended Action: $action',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMain,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'System Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Deep Insights (Antigravity Expandable Card)
+        if (detected)
+          Card(
+            elevation: 0,
+            color: AppColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            child: Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                initiallyExpanded: true,
+                title: const Text(
+                  'Antigravity Orchestration',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMain,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: const Text(
+                  'Allocations, Simulations & Comms',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                iconColor: AppColors.info,
+                collapsedIconColor: AppColors.textSecondary,
+                tilePadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 4,
+                ),
+                childrenPadding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  bottom: 20,
+                ),
+                children: [
+                  // 1. Allocation
+                  _buildInsightRow(
+                    Icons.local_shipping_rounded,
+                    'Resource Allocation',
+                    allocation.isEmpty
+                        ? 'No specific resources assigned.'
+                        : allocation.entries
+                              .map(
+                                (e) =>
+                                    '${e.value}x ${e.key.replaceAll('_', ' ')}',
+                              )
+                              .join('\n'),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2. Simulation
+                  _buildInsightRow(
+                    Icons.analytics_rounded,
+                    'Simulation Impact',
+                    'ETA Reduction: ${simulation['eta_reduction_minutes'] ?? 0} mins\nReroute Traffic: ${simulation['traffic_reroute'] == true ? 'Yes' : 'No'}\nSide Effects: ${simulation['side_effects'] ?? 'None predicted'}',
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Notifications
+                  _buildInsightRow(
+                    Icons.cell_tower_rounded,
+                    'Stakeholder Comms',
+                    notifications.isEmpty
+                        ? 'No alerts dispatched.'
+                        : notifications
+                              .map(
+                                (n) =>
+                                    '[${n['target'].toString().toUpperCase()}] ${n['message']}',
+                              )
+                              .join('\n\n'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 16),
+
+        // False Alarm Button (Only in Test Mode)
+        if (_testMode && detected)
+          OutlinedButton.icon(
+            onPressed: _simulateFalseAlarm,
+            icon: const Icon(Icons.block, color: AppColors.textMain, size: 20),
+            label: const Text(
+              'Simulate False Alarm',
+              style: TextStyle(
+                color: AppColors.textMain,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              side: BorderSide(color: AppColors.textMain.withOpacity(0.2)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              backgroundColor: AppColors.background,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInsightRow(IconData icon, String title, String content) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.info.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 20, color: AppColors.info),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMain,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                content,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

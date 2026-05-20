@@ -1,427 +1,355 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import '../theme/app_colors.dart';
-import '../config/api_config.dart';
-import '../widgets/simulation_panel.dart';
+
+class ApiConfig {
+  static const String baseUrl =
+      'http://localhost:8000'; // Change to 10.0.2.2 if on Android Emulator
+  static const String crises = '$baseUrl/crises';
+}
 
 class IncidentsScreen extends StatefulWidget {
-  const IncidentsScreen({super.key});
+  const IncidentsScreen({Key? key}) : super(key: key);
 
   @override
   State<IncidentsScreen> createState() => _IncidentsScreenState();
 }
 
 class _IncidentsScreenState extends State<IncidentsScreen> {
-  List<Map<String, dynamic>> _records = [];
-  bool _loading = true;
-  String? _error;
+  List<dynamic> _activeCrises = [];
+  Map<String, dynamic> _availableUnits = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchHistory();
+    _fetchCrises();
   }
 
-  Future<void> _fetchHistory() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _fetchCrises() async {
+    setState(() => _isLoading = true);
     try {
-      final response = await http.get(
-        Uri.parse(ApiConfig.history),
-      );
+      final response = await http.get(Uri.parse(ApiConfig.crises));
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        if (mounted) {
-          setState(() {
-            _records = data.cast<Map<String, dynamic>>();
-            _loading = false;
-          });
-        }
+        final data = jsonDecode(response.body);
+        setState(() {
+          _activeCrises = data['active_crises'] ?? [];
+          _availableUnits = data['available_units'] ?? {};
+          _isLoading = false;
+        });
       } else {
-        if (mounted) {
-          setState(() {
-            _error = 'Server returned ${response.statusCode}';
-            _loading = false;
-          });
-        }
+        _showError('Failed to load active incidents.');
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Could not connect to backend: $e';
-          _loading = false;
-        });
-      }
+      _showError('Connection error: $e');
     }
   }
 
-  String _formatTimestamp(String? ts) {
-    if (ts == null || ts.isEmpty) return 'Unknown time';
+  Future<void> _resolveCrisis(String id) async {
     try {
-      final dt = DateTime.parse(ts).toLocal();
-      final date = '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)}';
-      final time = '${_pad(dt.hour)}:${_pad(dt.minute)}';
-      return '$date at $time';
-    } catch (_) {
-      return ts;
-    }
-  }
-
-  String _pad(int n) => n.toString().padLeft(2, '0');
-
-  Color _severityColor(String severity) {
-    switch (severity.toLowerCase()) {
-      case 'high':
-        return AppColors.error;
-      case 'medium':
-        return AppColors.secondary;
-      case 'low':
-        return AppColors.warning;
-      default:
-        return AppColors.textMuted;
-    }
-  }
-
-  void _showIncidentDetail(BuildContext context, Map<String, dynamic> record) {
-    final imageName = record['image_name'] as String? ?? '';
-    final imageUrl = '${ApiConfig.baseUrl}/images/$imageName';
-    final detected = record['detected'] as bool? ?? false;
-    final confidence = ((record['confidence'] as num? ?? 0.0) * 100).toStringAsFixed(1);
-    final ts = _formatTimestamp(record['timestamp'] as String?);
-    final severity = record['severity'] as String? ?? 'None';
-    final crisisType = (record['crisis_type'] as String?) ?? (detected ? 'fire' : 'none');
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        // Local state for simulation inside the dialog
-        Map<String, dynamic>? simResult;
-        bool simLoading = false;
-        String? simError;
-
-        // mock: default resources for simulation
-        final Map<String, int> mockResources = {
-          'fire_trucks': 3,
-          'ambulances': 2,
-          'police_units': 4,
-          'water_tankers': 2,
-        };
-
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            Future<void> runSimulation() async {
-              setDialogState(() {
-                simLoading = true;
-                simResult = null;
-                simError = null;
-              });
-              try {
-                final body = json.encode({
-                  'crisis_type': crisisType.isEmpty ? 'fire' : crisisType,
-                  'allocated_resources': mockResources,
-                  'location': 'Incident Site',
-                });
-                final response = await http.post(
-                  Uri.parse(ApiConfig.simulate),
-                  headers: {'Content-Type': 'application/json'},
-                  body: body,
-                );
-                if (response.statusCode == 200) {
-                  setDialogState(() {
-                    simResult = json.decode(response.body) as Map<String, dynamic>;
-                    simLoading = false;
-                  });
-                } else {
-                  throw Exception('Status ${response.statusCode}');
-                }
-              } catch (e) {
-                setDialogState(() {
-                  simError = e.toString();
-                  simLoading = false;
-                });
-              }
-            }
-
-            return Dialog(
-              backgroundColor: AppColors.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── header ──────────────────────────────────────────────
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Incident Detail',
-                            style: GoogleFonts.outfit(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // ── incident image ───────────────────────────────────────
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: imageName.isNotEmpty
-                            ? Image.network(
-                                imageUrl,
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => _imagePlaceholder(),
-                              )
-                            : _imagePlaceholder(),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── detail rows ──────────────────────────────────────────
-                      _detailRow('Crisis Type', detected ? crisisType.toUpperCase() : 'Clear'),
-                      _detailRow('Severity', severity.toUpperCase()),
-                      _detailRow('Confidence', '$confidence%'),
-                      _detailRow('Timestamp', ts),
-                      const SizedBox(height: 16),
-
-                      // ── simulate button ──────────────────────────────────────
-                      if (detected) ...[
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: simLoading ? null : runSimulation,
-                            icon: simLoading
-                                ? const SizedBox(
-                                    width: 14, height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.black),
-                                  )
-                                : const Icon(Icons.bolt_rounded, size: 18, color: Colors.black),
-                            label: Text(
-                              simLoading ? 'Simulating…' : 'Simulate Response',
-                              style: GoogleFonts.outfit(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Colors.black),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.cyanAccent,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-
-                        // ── simulation result panel ───────────────────────────
-                        if (simError != null) ...[
-                          const SizedBox(height: 10),
-                          Text(simError!,
-                              style: GoogleFonts.outfit(
-                                  color: AppColors.error, fontSize: 12)),
-                        ],
-                        if (simResult != null) ...[
-                          const SizedBox(height: 16),
-                          SimulationPanel(simResult: simResult!),
-                        ],
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/resolve_crisis/$id'),
+      );
+      if (response.statusCode == 200) {
+        _fetchCrises(); // Refresh the list
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Crisis resolved. Resources returned to pool.'),
+            backgroundColor: AppColors.success,
+          ),
         );
-      },
+      }
+    } catch (e) {
+      _showError('Failed to resolve crisis: $e');
+    }
+  }
+
+  void _showError(String msg) {
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: AppColors.primary),
     );
   }
 
-  Widget _imagePlaceholder() {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      color: AppColors.background,
-      child: Center(
-        child: Icon(Icons.image_not_supported, color: AppColors.textMuted, size: 40),
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: GoogleFonts.outfit(color: AppColors.textSecondary)),
-          Text(
-            value,
-            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIncidentCard(Map<String, dynamic> record) {
-    final detected = record['detected'] as bool? ?? false;
-    final severity = record['severity'] as String? ?? 'none';
-    final ts = _formatTimestamp(record['timestamp'] as String?);
-    final confidence = ((record['confidence'] as num? ?? 0.0) * 100).toStringAsFixed(1);
-    final crisisType = (record['crisis_type'] as String?)?.toUpperCase() ?? (detected ? 'FIRE' : 'NONE');
-
-    final color = detected ? _severityColor(severity) : AppColors.success;
-    final icon = detected ? Icons.warning_rounded : Icons.check_circle_rounded;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: AppColors.surface,
-      child: InkWell(
-        onTap: () => _showIncidentDetail(context, record),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      detected ? '$crisisType INCIDENT' : 'AREA CLEAR',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      ts,
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (detected)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: color, width: 1),
-                      ),
-                      child: Text(
-                        severity.toUpperCase(),
-                        style: GoogleFonts.outfit(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$confidence%',
-                    style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  String _formatTime(String? isoString) {
+    if (isoString == null) return 'Unknown Time';
+    try {
+      final dt = DateTime.parse(isoString).toLocal();
+      return DateFormat('MMM dd, HH:mm').format(dt);
+    } catch (_) {
+      return isoString;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: AppColors.error),
-                      const SizedBox(height: 16),
-                      Text(
-                        _error!,
-                        style: GoogleFonts.outfit(color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _fetchHistory,
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                        child: Text('Retry', style: GoogleFonts.outfit(color: Colors.white)),
-                      ),
-                    ],
+      body: _isLoading
+          ? const Center(child: CupertinoActivityIndicator(radius: 16))
+          : RefreshIndicator(
+              onRefresh: _fetchCrises,
+              color: AppColors.primary,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildResourceDashboard(),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Active Incidents',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                )
-              : _records.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.shield_outlined, size: 64, color: AppColors.textMuted),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No incidents detected',
-                            style: GoogleFonts.outfit(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 12),
+                  if (_activeCrises.isEmpty)
+                    _buildEmptyState()
+                  else
+                    ..._activeCrises.reversed
+                        .map((crisis) => _buildCrisisCard(crisis))
+                        .toList(),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildResourceDashboard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2C3E50), Color(0xFF34495E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Global Fleet Status',
+            style: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _availableUnits.entries.map((e) {
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${e.value} ${e.key.replaceAll('_', ' ').toUpperCase()}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCrisisCard(Map<String, dynamic> crisis) {
+    final String id = crisis['id'] ?? '';
+    final String type = crisis['type'] ?? 'UNKNOWN';
+    final String location = crisis['location'] ?? 'Unknown Location';
+    final String status = crisis['status'] ?? 'active';
+    final double severity = crisis['severity'] ?? 0.0;
+    final Map<String, dynamic> alloc = crisis['allocated_resources'] ?? {};
+
+    final bool needsVerification = status == 'verification_required';
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: needsVerification
+              ? AppColors.warning.withOpacity(0.5)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color:
+                        (needsVerification
+                                ? AppColors.warning
+                                : AppColors.primary)
+                            .withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    needsVerification
+                        ? 'NEEDS VERIFICATION'
+                        : type.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: needsVerification
+                          ? AppColors.warning
+                          : AppColors.primary,
+                    ),
+                  ),
+                ),
+                Text(
+                  _formatTime(crisis['timestamp']),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              location,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Severity: ${(severity * 100).toStringAsFixed(0)}%  |  ID: ${id.substring(0, 8)}',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+
+            if (alloc.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.only(top: 12, bottom: 8),
+                child: Divider(height: 1),
+              ),
+              const Text(
+                'Dispatched Units:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                children: alloc.entries
+                    .map(
+                      (e) => Chip(
+                        label: Text(
+                          '${e.value}x ${e.key.replaceAll('_', ' ')}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        backgroundColor: AppColors.background,
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     )
-                  : RefreshIndicator(
-                      onRefresh: _fetchHistory,
-                      color: AppColors.primary,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _records.length,
-                        itemBuilder: (context, index) => _buildIncidentCard(_records[index]),
-                      ),
-                    ),
+                    .toList(),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => _resolveCrisis(id),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: needsVerification
+                      ? AppColors.warning
+                      : AppColors.success,
+                  side: BorderSide(
+                    color:
+                        (needsVerification
+                                ? AppColors.warning
+                                : AppColors.success)
+                            .withOpacity(0.5),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  needsVerification ? 'Reject / Retract' : 'Mark as Resolved',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.shield_outlined,
+              size: 48,
+              color: AppColors.textSecondary,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No active incidents.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,176 +1,82 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
-import '../theme/app_colors.dart';
-import '../config/api_config.dart';
+import 'package:intl/intl.dart';
 
-class TraceLog {
-  final String agentName;
-  final String stepType;
-  final String reasoning;
-  final double confidenceBefore;
-  final double confidenceAfter;
-  final String timestamp;
-
-  TraceLog({
-    required this.agentName,
-    required this.stepType,
-    required this.reasoning,
-    required this.confidenceBefore,
-    required this.confidenceAfter,
-    required this.timestamp,
-  });
-
-  factory TraceLog.fromJson(Map<String, dynamic> json) {
-    return TraceLog(
-      agentName: json['agent_name'] ?? 'Unknown',
-      stepType: json['step_type']?.toString().toUpperCase() ?? 'UNKNOWN',
-      reasoning: json['reasoning'] ?? '',
-      confidenceBefore: (json['confidence_before'] ?? 0.0).toDouble(),
-      confidenceAfter: (json['confidence_after'] ?? 0.0).toDouble(),
-      timestamp: json['timestamp'] ?? '',
-    );
-  }
+// --- Configuration ---
+class ApiConfig {
+  // Configured for Web (localhost). If moving back to Android Emulator, change to 10.0.2.2
+  static const String baseUrl = 'http://localhost:8000';
+  static const String traces = '$baseUrl/traces';
+  static const String antigravityTraces = '$baseUrl/antigravity_traces';
 }
 
-class AgentScreen extends StatefulWidget {
-  const AgentScreen({super.key});
+class AppColors {
+  static const Color primary = Color(0xFFD32F2F);
+  static const Color background = Color(0xFFF5F5F7);
+  static const Color surface = Colors.white;
+  static const Color textMain = Color(0xFF1D1D1F);
+  static const Color textSecondary = Color(0xFF86868B);
+  static const Color accent = Color(0xFF007AFF);
+  static const Color warning = Color(0xFFFF9500);
+}
+
+class AgentTracesScreen extends StatefulWidget {
+  const AgentTracesScreen({Key? key}) : super(key: key);
 
   @override
-  State<AgentScreen> createState() => _AgentScreenState();
+  State<AgentTracesScreen> createState() => _AgentTracesScreenState();
 }
 
-class _AgentScreenState extends State<AgentScreen> {
-  List<TraceLog> _allTraces = [];
+class _AgentTracesScreenState extends State<AgentTracesScreen> {
+  List<dynamic> _standardTraces = [];
+  List<dynamic> _agTraces = [];
   bool _isLoading = true;
-  String _selectedFilter = 'All';
-  Timer? _pollTimer;
-
-  final List<String> _pipelineSteps = [
-    'OBSERVE',
-    'ANALYZE',
-    'DECIDE',
-    'ACT',
-    'EVALUATE',
-  ];
-
-  final List<String> _filters = [
-    'All',
-    'OBSERVE',
-    'ANALYZE',
-    'DECIDE',
-    'ACT',
-    'EVALUATE',
-  ];
 
   @override
   void initState() {
     super.initState();
     _fetchTraces();
-    _startPolling();
   }
 
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startPolling() {
-    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      _fetchTraces(silent: true);
-    });
-  }
-
-  Future<void> _fetchTraces({bool silent = false}) async {
-    if (!silent) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
+  Future<void> _fetchTraces() async {
+    setState(() => _isLoading = true);
     try {
-      final response = await http.get(Uri.parse(ApiConfig.traces));
+      // Fetch both trace types concurrently
+      final responses = await Future.wait([
+        http.get(Uri.parse(ApiConfig.traces)),
+        http.get(Uri.parse(ApiConfig.antigravityTraces)),
+      ]);
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        if (mounted) {
-          setState(() {
-            _allTraces = data.map((json) => TraceLog.fromJson(json)).toList();
-            _allTraces.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-            if (!silent) _isLoading = false;
-          });
-        }
+      if (responses[0].statusCode == 200 && responses[1].statusCode == 200) {
+        setState(() {
+          _standardTraces = jsonDecode(responses[0].body);
+          _agTraces = jsonDecode(responses[1].body);
+          _isLoading = false;
+        });
       } else {
-        if (!silent && mounted) setState(() => _isLoading = false);
+        _showError('Failed to load traces from server.');
       }
     } catch (e) {
-      if (!silent && mounted) setState(() => _isLoading = false);
+      _showError('Connection error: $e');
     }
   }
 
-  String get _currentPipelineStep {
-    if (_allTraces.isEmpty) return '';
-    return _allTraces.first.stepType;
+  void _showError(String msg) {
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: AppColors.primary),
+    );
   }
 
-  String get _latestAction {
-    if (_allTraces.isEmpty) return 'No action yet';
-    return _allTraces.first.reasoning.isNotEmpty
-        ? _allTraces.first.reasoning
-        : 'Processing...';
-  }
-
-  List<TraceLog> get _filteredTraces {
-    if (_selectedFilter == 'All') return _allTraces;
-    return _allTraces
-        .where((t) => t.stepType.contains(_selectedFilter))
-        .toList();
-  }
-
-  Color _getStepColor(String stepType) {
-    switch (stepType) {
-      case 'OBSERVE':
-        return AppColors.info;
-      case 'ANALYZE':
-        return AppColors.tertiary;
-      case 'DECIDE':
-        return AppColors.warning;
-      case 'ACT':
-        return AppColors.success;
-      case 'EVALUATE':
-        return AppColors.error;
-      default:
-        return AppColors.textMuted;
-    }
-  }
-
-  IconData _getStepIcon(String stepType) {
-    switch (stepType) {
-      case 'OBSERVE':
-        return Icons.visibility_outlined;
-      case 'ANALYZE':
-        return Icons.analytics_outlined;
-      case 'DECIDE':
-        return Icons.psychology_outlined;
-      case 'ACT':
-        return Icons.bolt_outlined;
-      case 'EVALUATE':
-        return Icons.fact_check_outlined;
-      default:
-        return Icons.memory;
-    }
-  }
-
-  String _formatTimestamp(String ts) {
-    if (ts.isEmpty) return '';
+  String _formatTime(String? isoString) {
+    if (isoString == null) return 'Unknown Time';
     try {
-      final dt = DateTime.parse(ts).toLocal();
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+      final dt = DateTime.parse(isoString).toLocal();
+      return DateFormat('HH:mm:ss').format(dt);
     } catch (_) {
-      return ts;
+      return isoString;
     }
   }
 
@@ -178,379 +84,265 @@ class _AgentScreenState extends State<AgentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          // Pipeline Row
-          _buildPipelineRow(),
-
-          // Latest Action Section
-          if (_allTraces.isNotEmpty) _buildLatestActionSection(),
-
-          // Filter Chips Container
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 12.0,
-            ),
-            color: AppColors.surface,
-            width: double.infinity,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text(
-                        filter,
-                        style: GoogleFonts.outfit(
-                          color: isSelected
-                              ? Colors.white
-                              : AppColors.textSecondary,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          fontSize: 12,
-                        ),
-                      ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() => _selectedFilter = filter);
-                      },
-                      backgroundColor: AppColors.surfaceElevated,
-                      selectedColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey.shade300,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-
-          // Traces List View
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _fetchTraces,
-                    color: AppColors.primary,
-                    child: _filteredTraces.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(16.0),
-                            itemCount: _filteredTraces.length,
-                            itemBuilder: (context, index) {
-                              return _buildTraceCard(_filteredTraces[index]);
-                            },
-                          ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPipelineRow() {
-    final currentStep = _currentPipelineStep;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-      color: AppColors.surface,
-      width: double.infinity,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Agent Pipeline',
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textMuted,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(_pipelineSteps.length, (index) {
-                final step = _pipelineSteps[index];
-                final isActive = step == currentStep;
-                final color = _getStepColor(step);
-                final icon = _getStepIcon(step);
-
-                return Padding(
-                  padding: EdgeInsets.only(
-                    right: index < _pipelineSteps.length - 1 ? 0 : 0,
-                  ),
-                  child: Row(
-                    children: [
-                      // Step Circle
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? color.withOpacity(0.2)
-                              : AppColors.surfaceElevated,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isActive ? color : Colors.grey.shade300,
-                            width: isActive ? 2.5 : 1.5,
-                          ),
-                          boxShadow: isActive
-                              ? [
-                                  BoxShadow(
-                                    color: color.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  ),
-                                ]
-                              : [],
-                        ),
-                        child: Icon(
-                          icon,
-                          color: isActive ? color : AppColors.textMuted,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        step,
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          fontWeight: isActive
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isActive ? color : AppColors.textMuted,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      // Arrow (except for last step)
-                      if (index < _pipelineSteps.length - 1) ...[
-                        const SizedBox(width: 12),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 16,
-                          color: AppColors.textMuted.withOpacity(0.5),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
-                    ],
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLatestActionSection() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      color: AppColors.surfaceElevated.withOpacity(0.5),
-      width: double.infinity,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.local_fire_department,
-                  color: AppColors.primary,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Latest Action',
-                style: GoogleFonts.outfit(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textMuted,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _latestAction.length > 120
-                ? '${_latestAction.substring(0, 120)}...'
-                : _latestAction,
-            style: GoogleFonts.outfit(
-              fontSize: 13,
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTraceCard(TraceLog trace) {
-    final color = _getStepColor(trace.stepType);
-    final icon = _getStepIcon(trace.stepType);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: AppColors.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        trace.agentName,
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        _formatTimestamp(trace.timestamp),
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color.withOpacity(0.5)),
-                  ),
-                  child: Text(
-                    trace.stepType,
-                    style: GoogleFonts.outfit(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              trace.reasoning.length > 80
-                  ? '${trace.reasoning.substring(0, 80)}...'
-                  : trace.reasoning,
-              style: GoogleFonts.outfit(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildConfidenceBadge('Before', trace.confidenceBefore),
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 16,
-                  color: AppColors.textMuted,
-                ),
-                _buildConfidenceBadge('After', trace.confidenceAfter),
-              ],
-            ),
-          ],
+      appBar: AppBar(
+        title: const Text(
+          'System Traces',
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchTraces),
+        ],
       ),
+      body: _isLoading
+          ? const Center(child: CupertinoActivityIndicator(radius: 16))
+          : RefreshIndicator(
+              onRefresh: _fetchTraces,
+              color: AppColors.primary,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildSectionHeader(
+                    'Antigravity Plans',
+                    Icons.psychology_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_agTraces.isEmpty)
+                    _buildEmptyState('No Antigravity plans generated yet.')
+                  else
+                    ..._agTraces.reversed
+                        .map((trace) => _buildAgTraceCard(trace))
+                        .toList(),
+
+                  const SizedBox(height: 32),
+
+                  _buildSectionHeader(
+                    'Standard Agent Pipeline',
+                    Icons.memory_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_standardTraces.isEmpty)
+                    _buildEmptyState('No standard traces found.')
+                  else
+                    ..._standardTraces
+                        .map((trace) => _buildStandardTraceCard(trace))
+                        .toList(),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _buildConfidenceBadge(String label, double value) {
-    final valPercent = (value * 100).toStringAsFixed(0);
+  Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
       children: [
+        Icon(icon, color: AppColors.textSecondary, size: 20),
+        const SizedBox(width: 8),
         Text(
-          '$label: ',
-          style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 12),
-        ),
-        Text(
-          '$valPercent%',
-          style: GoogleFonts.outfit(
-            color: AppColors.textPrimary,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textMain,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.memory,
-            size: 64,
-            color: AppColors.textMuted.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No agent traces yet',
-            style: GoogleFonts.outfit(
-              fontSize: 18,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.bold,
+  Widget _buildEmptyState(String msg) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Text(
+          msg,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgTraceCard(Map<String, dynamic> trace) {
+    final String decision = trace['final_decision'] ?? 'Unknown Decision';
+    final String reasoning = trace['reasoning'] ?? '';
+    final Map<String, dynamic> alloc = trace['allocation_plan'] ?? {};
+    final bool isRetraction =
+        trace['workplan']?.contains('retract_crisis') ?? false;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isRetraction
+              ? AppColors.warning.withOpacity(0.5)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          leading: CircleAvatar(
+            backgroundColor: isRetraction
+                ? AppColors.warning.withOpacity(0.1)
+                : AppColors.accent.withOpacity(0.1),
+            child: Icon(
+              isRetraction ? Icons.block : Icons.insights,
+              color: isRetraction ? AppColors.warning : AppColors.accent,
+              size: 20,
             ),
           ),
-          const SizedBox(height: 8),
+          title: Text(
+            isRetraction
+                ? 'FALSE ALARM RETRACTION'
+                : decision.toUpperCase().replaceAll('_', ' '),
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: AppColors.textMain,
+            ),
+          ),
+          subtitle: const Text(
+            'AG Engine Reasoning Trace',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: 20,
+          ),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                reasoning,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: AppColors.textMain,
+                ),
+              ),
+            ),
+            if (!isRetraction && alloc.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Network Allocations',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: alloc.entries
+                      .map(
+                        (e) => Chip(
+                          label: Text(
+                            '${e.value}x ${e.key.replaceAll('_', ' ')}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          backgroundColor: AppColors.background,
+                          side: BorderSide.none,
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandardTraceCard(Map<String, dynamic> trace) {
+    final String stepType = trace['step_type'] ?? 'UNKNOWN';
+    final String reasoning = trace['reasoning'] ?? 'No reasoning provided';
+    final String agent = trace['agent_name'] ?? 'System';
+    final String time = _formatTime(trace['timestamp']);
+
+    // Highlight EVALUATE steps (like false alarm retractions)
+    final bool isEval = stepType == 'EVALUATE';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isEval
+              ? AppColors.warning.withOpacity(0.3)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: (isEval ? AppColors.warning : AppColors.textMain)
+                      .withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  stepType,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isEval ? AppColors.warning : AppColors.textMain,
+                  ),
+                ),
+              ),
+              Text(
+                time,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Text(
-            'Traces will appear here once an\nincident is processed.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textMuted),
+            reasoning,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textMain,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Agent: ${agent.toUpperCase()}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ),

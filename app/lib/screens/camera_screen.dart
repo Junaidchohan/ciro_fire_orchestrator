@@ -6,7 +6,6 @@ import '../config/api_config.dart';
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
-// import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class CameraScreen extends StatefulWidget {
   @override
@@ -21,12 +20,24 @@ class _CameraScreenState extends State<CameraScreen> {
   html.VideoElement? _videoElement;
   bool _cameraReady = false;
 
+  // --- NEW: Antigravity Context State ---
+  final TextEditingController _socialController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController(
+    text: "G-10, Islamabad",
+  );
+  bool _testMode = false;
+
   // Severity state from last detection
   String? _severity; // 'low' | 'medium' | 'high' | 'none' | null
   String? _recommendation; // 'monitor' | 'prepare' | 'evacuate' | 'none'
   bool _detected = false;
   double _confidence = 0.0;
-  String _agentReasoning = ''; // JSON-encoded agent_trace from backend
+  String _agentReasoning = '';
+
+  // --- NEW: Antigravity Results State ---
+  String? _currentCrisisId;
+  Map<String, dynamic>? _allocationPlan;
+  Map<String, dynamic>? _simulation;
 
   @override
   void initState() {
@@ -76,11 +87,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     setState(() {
       _selectedImageBytes = Uint8List.fromList(bytes);
-      _result = '';
-      _severity = null;
-      _recommendation = null;
-      _detected = false;
-      _confidence = 0.0;
+      _resetResults();
     });
   }
 
@@ -95,13 +102,19 @@ class _CameraScreenState extends State<CameraScreen> {
       await reader.onLoad.first;
       setState(() {
         _selectedImageBytes = Uint8List.fromList(reader.result as List<int>);
-        _result = '';
-        _severity = null;
-        _recommendation = null;
-        _detected = false;
-        _confidence = 0.0;
+        _resetResults();
       });
     });
+  }
+
+  void _resetResults() {
+    _result = '';
+    _severity = null;
+    _recommendation = null;
+    _detected = false;
+    _confidence = 0.0;
+    _allocationPlan = null;
+    _currentCrisisId = null;
   }
 
   Future<void> _detectFire() async {
@@ -109,10 +122,8 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _loading = true);
 
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse(ApiConfig.detect),
-      );
+      var request = http.MultipartRequest('POST', Uri.parse(ApiConfig.detect));
+
       request.files.add(
         http.MultipartFile.fromBytes(
           'image',
@@ -120,6 +131,21 @@ class _CameraScreenState extends State<CameraScreen> {
           filename: 'image.jpg',
         ),
       );
+
+      // --- NEW: Attach Contextual Data for Antigravity Engine ---
+      if (_socialController.text.isNotEmpty) {
+        request.fields['social_text'] = _socialController.text;
+      }
+
+      if (_locationController.text.toLowerCase().contains("islamabad")) {
+        request.fields['lat'] = "33.6844";
+        request.fields['lon'] = "73.0479";
+      } else {
+        request.fields['lat'] = "31.5204"; // Lahore fallback
+        request.fields['lon'] = "74.3587";
+      }
+      request.fields['test_mode'] = _testMode.toString();
+
       var response = await request.send();
       var result = json.decode(await response.stream.bytesToString());
 
@@ -127,11 +153,21 @@ class _CameraScreenState extends State<CameraScreen> {
         _detected = result['detected'] == true;
         _confidence = (result['confidence'] as num?)?.toDouble() ?? 0.0;
         _severity = (result['severity'] as String?) ?? 'none';
-        _recommendation = (result['recommendation'] as String?) ?? 'none';
+        _recommendation =
+            (result['action'] ?? result['recommendation'] as String?) ?? 'none';
         _result = _detected
             ? '🔥 FIRE DETECTED! ${(_confidence * 100).toStringAsFixed(1)}%'
             : '✅ No fire detected';
-        _agentReasoning = json.encode(result['agent_trace']);
+
+        if (result['agent_trace'] != null) {
+          _agentReasoning = json.encode(result['agent_trace']);
+        }
+
+        // --- NEW: Parse Antigravity Results ---
+        _currentCrisisId = result['crisis_id'];
+        _allocationPlan = result['allocation_plan'];
+        _simulation = result['simulation'];
+
         _loading = false;
       });
     } catch (e) {
@@ -142,10 +178,108 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// Builds the severity badge, alert message, and action recommendation panel.
+  // --- NEW: False Alarm Logic ---
+  Future<void> _simulateFalseAlarm() async {
+    if (_currentCrisisId == null) return;
+
+    try {
+      final url = '${ApiConfig.baseUrl}/retract_crisis/$_currentCrisisId';
+      final response = await http.post(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🛑 False alarm recorded and resources retracted.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _resetResults();
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to retract crisis: $e')));
+    }
+  }
+
+  @override
+  void dispose() {
+    _mediaStream?.getTracks().forEach((track) => track.stop());
+    _socialController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  // --- NEW: Context Controls Form ---
+  Widget _buildContextControls() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Multi-Signal Context',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _socialController,
+            decoration: InputDecoration(
+              hintText: 'Social Text (e.g., "Huge fire spreading!")',
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _locationController,
+            decoration: InputDecoration(
+              hintText: 'Location (e.g., G-10, Islamabad)',
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+              isDense: true,
+            ),
+          ),
+          SwitchListTile(
+            title: const Text(
+              'Test Mode (Simulate False Positives)',
+              style: TextStyle(fontSize: 14),
+            ),
+            contentPadding: EdgeInsets.zero,
+            value: _testMode,
+            activeColor: Colors.red,
+            onChanged: (val) => setState(() => _testMode = val),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResultPanel() {
     if (!_detected) {
-      // No fire detected – plain success card
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -168,7 +302,6 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    // Severity-specific config
     final String sev = _severity ?? 'low';
     final Color badgeColor;
     final Color panelBorder;
@@ -191,7 +324,7 @@ class _CameraScreenState extends State<CameraScreen> {
         action = 'PREPARE FOR EVACUATION';
         actionIcon = Icons.warning_amber_rounded;
         break;
-      default: // 'low'
+      default:
         badgeColor = Colors.amber;
         panelBorder = Colors.amber;
         alertMsg = '🟡 ALERT – Low-level fire/smoke trace detected.';
@@ -199,93 +332,156 @@ class _CameraScreenState extends State<CameraScreen> {
         actionIcon = Icons.visibility;
     }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: panelBorder.withOpacity(0.12),
-        border: Border.all(color: panelBorder, width: 1.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row: icon + title + badge
-          Row(
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: panelBorder.withOpacity(0.12),
+            border: Border.all(color: panelBorder, width: 1.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.local_fire_department,
-                color: Colors.red,
-                size: 28,
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Fire Detected',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                ),
-              ),
-              // Severity badge chip
-              Chip(
-                label: Text(
-                  sev.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
+              Row(
+                children: [
+                  const Icon(
+                    Icons.local_fire_department,
+                    color: Colors.red,
+                    size: 28,
                   ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Fire Detected',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Chip(
+                    label: Text(
+                      sev.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    backgroundColor: badgeColor,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(alertMsg, style: const TextStyle(fontSize: 14)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
-                backgroundColor: badgeColor,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                decoration: BoxDecoration(
+                  color: badgeColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(actionIcon, color: badgeColor, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Recommended: $action',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: badgeColor,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // Alert message
-          Text(alertMsg, style: const TextStyle(fontSize: 14)),
-          const SizedBox(height: 10),
-          // Recommended action
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: badgeColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
+        ),
+
+        // --- NEW: Antigravity Expansion Tile ---
+        if (_allocationPlan != null)
+          Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(top: 16),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.grey.shade300),
             ),
-            child: Row(
+            child: ExpansionTile(
+              initiallyExpanded: true,
+              title: const Text(
+                'Antigravity Orchestration',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              childrenPadding: const EdgeInsets.all(16),
               children: [
-                Icon(actionIcon, color: badgeColor, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Recommended: $action',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: badgeColor,
-                    fontSize: 13,
+                if (_allocationPlan!.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Allocated: ${_allocationPlan!.entries.map((e) => "${e.value}x ${e.key}").join(', ')}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
+                const SizedBox(height: 8),
+                if (_simulation != null &&
+                    _simulation!['traffic_reroute'] != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Simulation: ${_simulation!['traffic_reroute']['estimated_congestion_reduction']} congestion reduction predicted.',
+                    ),
+                  ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
 
-  @override
-  void dispose() {
-    _mediaStream?.getTracks().forEach((track) => track.stop());
-    super.dispose();
+        // --- NEW: False Alarm Button (Visible in Test Mode when crisis detected) ---
+        if (_testMode)
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _simulateFalseAlarm,
+                icon: const Icon(Icons.block, color: Colors.red),
+                label: const Text(
+                  'Simulate False Alarm',
+                  style: TextStyle(color: Colors.red),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Colors.red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Fire Detection'),
+        title: const Text('Fire Detection'),
         backgroundColor: Colors.red,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             // Camera preview
@@ -295,15 +491,14 @@ class _CameraScreenState extends State<CameraScreen> {
               color: Colors.black,
               child: _cameraReady && _videoElement != null
                   ? HtmlElementView(viewType: _videoElement!.tagName)
-                  // This already works once ui is imported
-                  : Center(
+                  : const Center(
                       child: Text(
                         'Camera loading...',
                         style: TextStyle(color: Colors.white),
                       ),
                     ),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
 
             // Buttons row
             Row(
@@ -311,19 +506,19 @@ class _CameraScreenState extends State<CameraScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _captureFrame,
-                    icon: Icon(Icons.camera),
-                    label: Text('Capture'),
+                    icon: const Icon(Icons.camera),
+                    label: const Text('Capture'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                     ),
                   ),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _pickImage,
-                    icon: Icon(Icons.photo_library),
-                    label: Text('Gallery'),
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text('Gallery'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                     ),
@@ -331,7 +526,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
             // Captured image preview
             if (_selectedImageBytes != null)
@@ -344,36 +539,45 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
                 child: Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
               ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
+
+            // --- NEW: Render Context Controls ---
+            _buildContextControls(),
 
             // Detect button
             ElevatedButton(
               onPressed: _detectFire,
-              child: Text('DETECT FIRE', style: TextStyle(fontSize: 18)),
+              child: const Text('DETECT FIRE', style: TextStyle(fontSize: 18)),
               style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 50),
+                minimumSize: const Size(double.infinity, 50),
                 backgroundColor: Colors.red,
               ),
             ),
+
             if (_loading)
-              SizedBox(height: 16, child: CircularProgressIndicator()),
-            if (_result.isNotEmpty) SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(),
+              ),
+
+            if (_result.isNotEmpty) const SizedBox(height: 16),
             if (_result.isNotEmpty) _buildResultPanel(),
+
             // Confidence indicator
             if (_result.isNotEmpty)
               Column(
                 children: [
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
-                      Text(
+                      const Text(
                         'Confidence: ',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text('${(_confidence * 100).toStringAsFixed(1)}%'),
                     ],
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: _confidence,
                     backgroundColor: Colors.grey[300],
@@ -382,24 +586,23 @@ class _CameraScreenState extends State<CameraScreen> {
                         : (_confidence > 0.4 ? Colors.orange : Colors.green),
                     minHeight: 10,
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   TweenAnimationBuilder<double>(
                     tween: Tween<double>(begin: 0, end: _confidence),
-                    duration: Duration(milliseconds: 500),
+                    duration: const Duration(milliseconds: 500),
                     builder: (context, value, child) => Text(
                       '${(value * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  // ── Severity badge pill (user-specified) ──────────────────
                   if (_severity != null && _severity != 'none')
                     ...([
-                      SizedBox(height: 12),
+                      const SizedBox(height: 12),
                       Container(
-                        padding: EdgeInsets.symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 6,
                         ),
@@ -413,7 +616,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         ),
                         child: Text(
                           _severity?.toUpperCase() ?? 'UNKNOWN',
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),

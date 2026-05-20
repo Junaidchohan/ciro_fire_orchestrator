@@ -1,9 +1,10 @@
 class ApiConfig {
-  // Use Google Cloud Run (LIVE)
-  static const String baseUrl =
-      'https://anti-gravity-backend-284125878879.us-central1.run.app';
+  // 1. Comment out the Cloud Run URL
+  // static const String baseUrl = 'https://anti-gravity-backend-284125878879.us-central1.run.app';
 
-  // Endpoints
+  // 2. Uncomment the local URL
+  static const String baseUrl = 'http://localhost:8000';
+
   static const String detect = '$baseUrl/detect';
   static const String health = '$baseUrl/health';
   static const String traces = '$baseUrl/traces';
@@ -13,7 +14,6 @@ class ApiConfig {
   static const String simulate = '$baseUrl/simulate';
   static const String allocate = '$baseUrl/allocate';
 
-  // WebSocket (fix this - HTTPS uses WSS, not WS)
-  static const String wsUrl =
-      'wss://anti-gravity-backend-284125878879.us-central1.run.app/ws';
+  // 3. Make sure WebSocket points to local too (use ws://, not wss:// for local)
+  static const String wsUrl = 'ws://localhost:8000/ws';
 }

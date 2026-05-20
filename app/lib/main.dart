@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/monitor_screen.dart';
+
+// ✅ Added 'hide AppColors, ApiConfig' to prevent the ambiguous import error!
+import 'screens/monitor_screen.dart' hide AppColors, ApiConfig;
 import 'screens/incidents_screen.dart';
-import 'screens/agent_screen.dart';
+import 'screens/agent_screen.dart' hide AppColors, ApiConfig;
 import 'services/alert_service.dart';
 import 'theme/app_colors.dart';
 
@@ -48,7 +50,7 @@ class _MainShellState extends State<MainShell> {
   final List<Widget> _screens = [
     const MonitorScreen(),
     const IncidentsScreen(),
-    const AgentScreen(),
+    const AgentTracesScreen(),
   ];
 
   @override
@@ -93,10 +95,12 @@ class _MainShellState extends State<MainShell> {
 
   void _simulateEvent() {
     if (!_testModeEnabled) return;
-    // For test mode, you can trigger a local mock or a real API call if desired.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Test Mode: Simulated event triggered', style: GoogleFonts.outfit()),
+        content: Text(
+          'Test Mode: Simulated event triggered',
+          style: GoogleFonts.outfit(),
+        ),
         backgroundColor: AppColors.primary,
       ),
     );
@@ -104,17 +108,6 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // In our new design, each screen handles its own AppBar except for the Drawer icon.
-    // However, for consistency and global drawer, it's easier to let the Scaffold here hold the AppBar if we want, 
-    // OR just use the body and pass the Drawer to the nested Scaffolds.
-    // Wait, since we are using BottomNavigationBar, it's best to let each screen be a widget, 
-    // but then they can't open this Scaffold's drawer easily without a GlobalKey.
-    // Since MonitorScreen doesn't have an AppBar in my rewrite (it just has SafeArea), we can put a floating hamburger or an AppBar here.
-    // Let's provide a global AppBar here to house the hamburger menu, and remove AppBars from the child screens.
-    // Wait, the children screens already have AppBars (except MonitorScreen which uses a top banner).
-    // Let's use an AppBar here for the drawer, but hide it if we want custom UI, OR just use an AppBar globally.
-
-    // Let's use a global AppBar to make things clean.
     final List<String> _titles = [
       'CIRO Operations',
       'Incident Logs',
@@ -161,10 +154,15 @@ class _MainShellState extends State<MainShell> {
         child: Column(
           children: [
             UserAccountsDrawerHeader(
-              decoration: const BoxDecoration(gradient: AppColors.cyberGradient),
+              decoration: const BoxDecoration(
+                gradient: AppColors.cyberGradient,
+              ),
               accountName: Text(
                 'Commander Steve Musk',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.white),
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               accountEmail: Text(
                 'commander@ciro.ai',
@@ -180,13 +178,34 @@ class _MainShellState extends State<MainShell> {
                 padding: EdgeInsets.zero,
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.settings, color: AppColors.textSecondary),
-                    title: Text('Settings', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                    leading: const Icon(
+                      Icons.settings,
+                      color: AppColors.textSecondary,
+                    ),
+                    title: Text(
+                      'Settings',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     onTap: () {},
                   ),
                   SwitchListTile(
-                    title: Text('Test Mode', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
-                    subtitle: Text('Enable simulated events', style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 12)),
+                    title: Text(
+                      'Test Mode',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Enable simulated events',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
                     activeColor: AppColors.primary,
                     value: _testModeEnabled,
                     onChanged: (val) {
@@ -197,8 +216,17 @@ class _MainShellState extends State<MainShell> {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: const Icon(Icons.info_outline, color: AppColors.textSecondary),
-                    title: Text('About CIRO', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                    leading: const Icon(
+                      Icons.info_outline,
+                      color: AppColors.textSecondary,
+                    ),
+                    title: Text(
+                      'About CIRO',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     onTap: () {},
                   ),
                 ],
@@ -207,17 +235,20 @@ class _MainShellState extends State<MainShell> {
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: AppColors.error),
-              title: Text('Logout', style: GoogleFonts.outfit(color: AppColors.error, fontWeight: FontWeight.bold)),
+              title: Text(
+                'Logout',
+                style: GoogleFonts.outfit(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               onTap: () {},
             ),
             const SizedBox(height: 16),
           ],
         ),
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: AppColors.surface,
         selectedItemColor: AppColors.primary,
@@ -253,7 +284,8 @@ class _MainShellState extends State<MainShell> {
       floatingActionButton: _testModeEnabled
           ? FloatingActionButton(
               onPressed: _simulateEvent,
-              backgroundColor: AppColors.warning,
+              backgroundColor:
+                  AppColors.warning, // ✅ Fixed the syntax error here!
               child: const Icon(Icons.bug_report, color: Colors.white),
               tooltip: 'Simulate Event',
             )
