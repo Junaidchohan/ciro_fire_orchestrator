@@ -321,7 +321,12 @@ async def detect(
 
             new_crisis["allocated_resources"] = crisis_allocation
             sim_results = simulation_engine.simulate_action(full_allocation_plan, new_crisis)
-            notifications = notification_generator.generate_notifications(new_crisis, full_allocation_plan, sim_results)
+            notifications = notification_generator.generate_notifications(
+                crisis_type=new_crisis.get("type", "fire"),
+                severity=new_crisis.get("severity", 0.92),
+                location=new_crisis.get("location", "Unknown"),
+                allocation_plan=crisis_allocation
+            )
 
         antigravity_traces.append(ag_plan)
         

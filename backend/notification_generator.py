@@ -1,153 +1,90 @@
 import logging
 from typing import Dict, Any, List
+from services.trace_logger import TraceLogger
 
-# Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class NotificationGenerator:
+def generate_notifications(crisis_type: str, severity: float, location: str, allocation_plan: Dict[str, int]) -> List[Dict[str, Any]]:
     """
     Generates targeted, dynamic alerts for various stakeholders
-    (Public, Hospitals, Utilities, Command Center, Media) based on the
-    crisis context, resource allocations, and simulation forecasts.
+    (Public, Hospital, Utility Company, and Command Centre) based on the
+    crisis context and resource allocations.
     """
+    trace_logger = TraceLogger()
+    notifications = []
+    
+    # Format allocation string for command centre
+    alloc_str = ", ".join([f"{v} {k.replace('_', ' ')}" for k, v in allocation_plan.items()])
+    if not alloc_str:
+        alloc_str = "None"
 
-    def generate_notifications(
-        self,
-        crisis: Dict[str, Any],
-        simulation: Dict[str, Any],
-        allocation: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    # Convert severity to float in case it's a string
+    try:
+        sev_val = float(severity)
+    except ValueError:
+        sev_val = 0.5
 
-        logger.info(f"Generating notifications for crisis ID: {crisis.get('id', 'UNKNOWN')}")
+    # 1. Public Notification
+    if sev_val >= 0.7:
+        public_msg = f"⚠️ URGENT: {crisis_type.capitalize()} at {location}. Avoid area. Use alternate routes."
+        public_urgency = "high"
+    else:
+        public_msg = f"⚠️ ALERT: {crisis_type.capitalize()} reported at {location}. Please be cautious."
+        public_urgency = "medium"
 
-        notifications = []
+    notifications.append({
+        "stakeholder": "public",
+        "channel": "sms",
+        "message": public_msg,
+        "urgency": public_urgency
+    })
 
-        # Extract context
-        c_id = crisis.get("id", "UNKNOWN-ID")
-        c_type = str(crisis.get("type", "incident")).upper()
-        severity = float(crisis.get("severity", 0.5))
-        location = crisis.get("location", "an unspecified location")
-
-        # Extract simulation stats
-        traffic_sim = simulation.get("traffic_reroute", {})
-        congestion_red = traffic_sim.get("estimated_congestion_reduction", "unknown%")
-
-        # Format allocation string
-        alloc_str = ", ".join([f"{v} {k.replace('_', ' ')}" for k, v in allocation.items()])
-        if not alloc_str:
-            alloc_str = "No specific resources allocated yet"
-
-        # 1. PUBLIC NOTIFICATION
-        public_urgency = "high" if severity >= 0.7 else "medium"
-        if c_type == "FIRE":
-            public_msg = f"⚠️ URGENT: {c_type} reported in {location}. Avoid the area. Keep windows closed due to smoke. Follow emergency routes."
-        elif c_type == "FLOOD":
-            public_msg = f"⚠️ URGENT: {c_type} warning in {location}. Do not drive through standing water. Evacuate low-lying zones immediately."
-        else:
-            public_msg = f"⚠️ ALERT: {c_type} incident reported in {location}. Emergency crews are responding. Avoid the area."
-
+    # 2. Hospital Notification
+    ambulances = allocation_plan.get("ambulances", 0)
+    if sev_val >= 0.6 or ambulances > 0:
+        est_cases_min = max(1, int(sev_val * 10))
+        est_cases_max = est_cases_min + 5
+        color_code = "RED" if sev_val >= 0.8 else "YELLOW"
+        hospital_msg = f"CODE {color_code}: Expect {est_cases_min}-{est_cases_max} cases from {crisis_type} at {location}. Prepare ER."
         notifications.append({
-            "stakeholder": "public",
-            "channel": "emergency_alert_system",
-            "message": public_msg,
-            "urgency": public_urgency
-        })
-
-        # 2. HOSPITAL NOTIFICATION (Only if severity is high or ambulances dispatched)
-        ambulances = allocation.get("ambulances", 0)
-        if severity >= 0.6 or ambulances > 0:
-            est_casualties = int(severity * 25) # Mock calculation
-            color_code = "RED" if severity >= 0.8 else "YELLOW"
-            hospital_msg = (f"CODE {color_code}: {c_type} crisis in {location}. "
-                            f"Expect {est_casualties - 5}-{est_casualties + 5} inbound casualties over the next 2 hours. "
-                            f"{ambulances} ambulances currently dispatched. Prepare ER and trauma teams.")
-            notifications.append({
-                "stakeholder": "hospital",
-                "channel": "dashboard",
-                "message": hospital_msg,
-                "urgency": "high" if severity >= 0.8 else "medium"
-            })
-
-        # 3. UTILITY COMPANY NOTIFICATION (For infrastructure-threatening crises)
-        if c_type in ["FIRE", "FLOOD"]:
-            utility_urgency = "high" if severity >= 0.75 else "medium"
-            if c_type == "FIRE":
-                util_msg = f"GAS SHUTOFF ALERT: High-severity fire near {location}. Pre-emptively shut off gas mains in adjacent sectors to prevent secondary explosions."
-            else:
-                util_msg = f"WATER/POWER ALERT: Severe flooding in {location}. Shut off electrical grid to ground-level transformers and monitor water main contamination."
-
-            notifications.append({
-                "stakeholder": "utility_company",
-                "channel": "email",
-                "message": util_msg,
-                "urgency": utility_urgency
-            })
-
-        # 4. COMMAND CENTER NOTIFICATION (Always generated)
-        cmd_msg = (f"Crisis ID #{c_id.split('-')[0].upper()}: {c_type} at {location}. "
-                   f"Resources allocated: {alloc_str}. "
-                   f"Simulation forecasts a {congestion_red} congestion reduction.")
-        notifications.append({
-            "stakeholder": "command_center",
+            "stakeholder": "hospital",
             "channel": "dashboard",
-            "message": cmd_msg,
-            "urgency": "high" if severity >= 0.8 else "medium"
+            "message": hospital_msg,
+            "urgency": "high" if sev_val >= 0.8 else "medium"
         })
 
-        # 5. MEDIA / PRESS NOTIFICATION (For major incidents)
-        if severity >= 0.7:
-            media_msg = (f"PRESS ADVISORY: City authorities are actively responding to a major {c_type} incident at {location}. "
-                         f"Citizens are advised to use alternate routes. Official statement to follow.")
-            notifications.append({
-                "stakeholder": "media",
-                "channel": "email",
-                "message": media_msg,
-                "urgency": "medium"
-            })
+    # 3. Utility Company Notification
+    if str(crisis_type).lower() in ["fire", "flood"]:
+        if str(crisis_type).lower() == "fire":
+            utility_msg = f"Check water pressure and power lines near {location}."
+        else:
+            utility_msg = f"Monitor drainage and electrical transformers near {location}."
+            
+        notifications.append({
+            "stakeholder": "utility",
+            "channel": "email",
+            "message": utility_msg,
+            "urgency": "high" if sev_val >= 0.75 else "medium"
+        })
 
-        return notifications
+    # 4. Command Centre Notification
+    cmd_msg = f"Crisis ID: ... Resources allocated: {alloc_str}."
+    notifications.append({
+        "stakeholder": "command_centre",
+        "channel": "dashboard",
+        "message": cmd_msg,
+        "urgency": "high" if sev_val >= 0.8 else "medium"
+    })
+    
+    # Write trace log
+    trace_logger.write_trace(
+        agent_name="NotificationGenerator",
+        step_type="generate_notifications",
+        reasoning=f"Generated {len(notifications)} notifications for {crisis_type} at {location} with severity {sev_val}",
+        confidence_before=1.0,
+        confidence_after=1.0,
+        inputs={"crisis_type": crisis_type, "severity": sev_val, "location": location, "allocation_plan": allocation_plan},
+        output={"notifications_count": len(notifications)}
+    )
 
-
-# --- Module-Level Singleton ---
-notifier_instance = NotificationGenerator()
-
-# Wrapper function for easy importing in main.py
-def generate_notifications(
-    crisis: Dict[str, Any],
-    allocation: Dict[str, Any],
-    simulation: Dict[str, Any]
-) -> List[Dict[str, Any]]:
-    return notifier_instance.generate_notifications(crisis, simulation, allocation)
-
-
-# ==========================================
-# TEST EXECUTION GUARD
-# ==========================================
-if __name__ == "__main__":
-    import json
-    print("=== Testing Notification Generator ===")
-
-    mock_crisis = {
-        "id": "fld-8842-x",
-        "type": "flood",
-        "severity": 0.85,
-        "location": "G-10, Islamabad"
-    }
-
-    mock_allocation = {
-        "ambulances": 2,
-        "rescue_teams": 3,
-        "police": 4
-    }
-
-    mock_simulation = {
-        "traffic_reroute": {
-            "estimated_congestion_reduction": "40%"
-        }
-    }
-
-    results = generate_notifications(mock_crisis, mock_allocation, mock_simulation)
-
-    print("\nGenerated Notifications:")
-    print(json.dumps(results, indent=4))
+    return notifications

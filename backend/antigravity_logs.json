@@ -8254,5 +8254,767 @@
                 }
             ]
         }
+    },
+    {
+        "timestamp": "2026-05-20T08:07:36.397472Z",
+        "request": {
+            "context": {
+                "crisis_type": "fire",
+                "severity": 0.92,
+                "location": "33.6844,73.0479",
+                "weather": {
+                    "condition": "heavy rain",
+                    "intensity": 8,
+                    "temp_c": 22,
+                    "humidity": 85
+                },
+                "traffic": {
+                    "congestion": "high",
+                    "speed_kmh": 12,
+                    "incidents": [
+                        "accident at G-10"
+                    ]
+                },
+                "social_text": null,
+                "test_mode": false
+            }
+        },
+        "response": {
+            "antigravity_trace_id": "7625f4cb-05ab-4e90-a8ab-911a3f16995e",
+            "workplan": [
+                "classify",
+                "allocate",
+                "simulate",
+                "notify"
+            ],
+            "tool_calls": [
+                "weather_api",
+                "traffic_api",
+                "social_sentiment_api"
+            ],
+            "reasoning": "Analyzed fire event at 33.6844,73.0479 with severity 0.92. High risk of spread detected. Immediate intervention required.",
+            "final_decision": "evacuate_and_dispatch_heavy_units",
+            "allocation_plan": {
+                "fire_trucks": 4,
+                "ambulances": 2,
+                "police": 3
+            },
+            "simulation": {
+                "eta_reduction_minutes": 15,
+                "traffic_reroute": true,
+                "side_effects": "Heavy congestion on outbound arterial routes."
+            },
+            "notifications": [
+                {
+                    "target": "public",
+                    "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                },
+                {
+                    "target": "hospital",
+                    "message": "Prepare burn unit; inbound casualties possible."
+                },
+                {
+                    "target": "utility",
+                    "message": "Shut down gas mains in sectors adjacent to fire."
+                }
+            ],
+            "traces": [
+                {
+                    "agent_name": "Observer",
+                    "step_type": "OBSERVE",
+                    "reasoning": "Observer scanned visual feed and social text. Detected crisis keywords and YOLO confidence of 0.92.",
+                    "inputs": {
+                        "social_text": null,
+                        "location": "33.6844,73.0479",
+                        "yolo_severity": 0.92
+                    },
+                    "output": {
+                        "signals_fused": true,
+                        "raw_risk": 0.92
+                    },
+                    "confidence_before": 0.5,
+                    "confidence_after": 0.85,
+                    "tool_calls": [
+                        {
+                            "tool_name": "yolo_detector",
+                            "arguments": {
+                                "image": "uploaded_frame.jpg"
+                            }
+                        },
+                        {
+                            "tool_name": "social_analyzer",
+                            "arguments": {
+                                "query": null
+                            }
+                        }
+                    ],
+                    "duration_ms": 110,
+                    "timestamp": "2026-05-20T13:07:36.397238"
+                },
+                {
+                    "agent_name": "Analyst",
+                    "step_type": "ANALYZE",
+                    "reasoning": "Analyst correlated location weather (heavy rain) and traffic (high) with visual alert. Wind and traffic conditions analysis completed.",
+                    "inputs": {
+                        "weather": {
+                            "condition": "heavy rain",
+                            "intensity": 8,
+                            "temp_c": 22,
+                            "humidity": 85
+                        },
+                        "traffic": {
+                            "congestion": "high",
+                            "speed_kmh": 12,
+                            "incidents": [
+                                "accident at G-10"
+                            ]
+                        },
+                        "base_confidence": 0.85
+                    },
+                    "output": {
+                        "weather_influence": "neutral",
+                        "traffic_bottleneck": "high"
+                    },
+                    "confidence_before": 0.85,
+                    "confidence_after": 0.9,
+                    "tool_calls": [
+                        {
+                            "tool_name": "weather_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        },
+                        {
+                            "tool_name": "traffic_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        }
+                    ],
+                    "duration_ms": 195,
+                    "timestamp": "2026-05-20T13:07:36.397238"
+                },
+                {
+                    "agent_name": "Decider",
+                    "step_type": "DECIDE",
+                    "reasoning": "Decider evaluated critical response criteria. Crisis type 'fire' with severity 0.92 warrants final decision: 'evacuate_and_dispatch_heavy_units'.",
+                    "inputs": {
+                        "fused_risk": 0.92,
+                        "analyst_confidence": 0.9
+                    },
+                    "output": {
+                        "decision": "evacuate_and_dispatch_heavy_units",
+                        "requires_review": false
+                    },
+                    "confidence_before": 0.9,
+                    "confidence_after": 0.95,
+                    "tool_calls": [],
+                    "duration_ms": 85,
+                    "timestamp": "2026-05-20T13:07:36.397238"
+                },
+                {
+                    "agent_name": "Executor",
+                    "step_type": "EXECUTE",
+                    "reasoning": "Executor initiated resource allocation for {'fire_trucks': 4, 'ambulances': 2, 'police': 3}. Dispatched 3 response broadcasts.",
+                    "inputs": {
+                        "allocation_plan": {
+                            "fire_trucks": 4,
+                            "ambulances": 2,
+                            "police": 3
+                        },
+                        "notifications": [
+                            {
+                                "target": "public",
+                                "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                            },
+                            {
+                                "target": "hospital",
+                                "message": "Prepare burn unit; inbound casualties possible."
+                            },
+                            {
+                                "target": "utility",
+                                "message": "Shut down gas mains in sectors adjacent to fire."
+                            }
+                        ]
+                    },
+                    "output": {
+                        "dispatch_status": "dispatched",
+                        "sent_alerts": 3
+                    },
+                    "confidence_before": 0.95,
+                    "confidence_after": 0.97,
+                    "tool_calls": [
+                        {
+                            "tool_name": "resource_dispatcher",
+                            "arguments": {
+                                "fire_trucks": 4,
+                                "ambulances": 2,
+                                "police": 3
+                            }
+                        },
+                        {
+                            "tool_name": "broadcast_manager",
+                            "arguments": {
+                                "notifications": [
+                                    {
+                                        "target": "public",
+                                        "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                                    },
+                                    {
+                                        "target": "hospital",
+                                        "message": "Prepare burn unit; inbound casualties possible."
+                                    },
+                                    {
+                                        "target": "utility",
+                                        "message": "Shut down gas mains in sectors adjacent to fire."
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "duration_ms": 140,
+                    "timestamp": "2026-05-20T13:07:36.397238"
+                },
+                {
+                    "agent_name": "Evaluator",
+                    "step_type": "EVALUATE",
+                    "reasoning": "Evaluator completed predictive simulation of the dispatch execution. ETA reduction: 15 min. Side effects: Heavy congestion on outbound arterial routes..",
+                    "inputs": {
+                        "simulation_context": {
+                            "eta_reduction_minutes": 15,
+                            "traffic_reroute": true,
+                            "side_effects": "Heavy congestion on outbound arterial routes."
+                        },
+                        "last_step_confidence": 0.97
+                    },
+                    "output": {
+                        "simulation_success": true,
+                        "network_stability_index": 0.94
+                    },
+                    "confidence_before": 0.97,
+                    "confidence_after": 0.99,
+                    "tool_calls": [
+                        {
+                            "tool_name": "simulator_engine",
+                            "arguments": {
+                                "eta_reduction_minutes": 15,
+                                "traffic_reroute": true,
+                                "side_effects": "Heavy congestion on outbound arterial routes."
+                            }
+                        }
+                    ],
+                    "duration_ms": 220,
+                    "timestamp": "2026-05-20T13:07:36.397238"
+                }
+            ]
+        }
+    },
+    {
+        "timestamp": "2026-05-20T08:07:52.264421Z",
+        "request": {
+            "context": {
+                "crisis_type": "fire",
+                "severity": 0.92,
+                "location": "33.6844,73.0479",
+                "weather": {
+                    "condition": "heavy rain",
+                    "intensity": 8,
+                    "temp_c": 22,
+                    "humidity": 85
+                },
+                "traffic": {
+                    "congestion": "high",
+                    "speed_kmh": 12,
+                    "incidents": [
+                        "accident at G-10"
+                    ]
+                },
+                "social_text": null,
+                "test_mode": false
+            }
+        },
+        "response": {
+            "antigravity_trace_id": "46641cc6-bb4d-4484-adf7-247f778777b6",
+            "workplan": [
+                "classify",
+                "allocate",
+                "simulate",
+                "notify"
+            ],
+            "tool_calls": [
+                "weather_api",
+                "traffic_api",
+                "social_sentiment_api"
+            ],
+            "reasoning": "Analyzed fire event at 33.6844,73.0479 with severity 0.92. High risk of spread detected. Immediate intervention required.",
+            "final_decision": "evacuate_and_dispatch_heavy_units",
+            "allocation_plan": {
+                "fire_trucks": 4,
+                "ambulances": 2,
+                "police": 3
+            },
+            "simulation": {
+                "eta_reduction_minutes": 15,
+                "traffic_reroute": true,
+                "side_effects": "Heavy congestion on outbound arterial routes."
+            },
+            "notifications": [
+                {
+                    "target": "public",
+                    "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                },
+                {
+                    "target": "hospital",
+                    "message": "Prepare burn unit; inbound casualties possible."
+                },
+                {
+                    "target": "utility",
+                    "message": "Shut down gas mains in sectors adjacent to fire."
+                }
+            ],
+            "traces": [
+                {
+                    "agent_name": "Observer",
+                    "step_type": "OBSERVE",
+                    "reasoning": "Observer scanned visual feed and social text. Detected crisis keywords and YOLO confidence of 0.92.",
+                    "inputs": {
+                        "social_text": null,
+                        "location": "33.6844,73.0479",
+                        "yolo_severity": 0.92
+                    },
+                    "output": {
+                        "signals_fused": true,
+                        "raw_risk": 0.92
+                    },
+                    "confidence_before": 0.5,
+                    "confidence_after": 0.85,
+                    "tool_calls": [
+                        {
+                            "tool_name": "yolo_detector",
+                            "arguments": {
+                                "image": "uploaded_frame.jpg"
+                            }
+                        },
+                        {
+                            "tool_name": "social_analyzer",
+                            "arguments": {
+                                "query": null
+                            }
+                        }
+                    ],
+                    "duration_ms": 110,
+                    "timestamp": "2026-05-20T13:07:52.264421"
+                },
+                {
+                    "agent_name": "Analyst",
+                    "step_type": "ANALYZE",
+                    "reasoning": "Analyst correlated location weather (heavy rain) and traffic (high) with visual alert. Wind and traffic conditions analysis completed.",
+                    "inputs": {
+                        "weather": {
+                            "condition": "heavy rain",
+                            "intensity": 8,
+                            "temp_c": 22,
+                            "humidity": 85
+                        },
+                        "traffic": {
+                            "congestion": "high",
+                            "speed_kmh": 12,
+                            "incidents": [
+                                "accident at G-10"
+                            ]
+                        },
+                        "base_confidence": 0.85
+                    },
+                    "output": {
+                        "weather_influence": "neutral",
+                        "traffic_bottleneck": "high"
+                    },
+                    "confidence_before": 0.85,
+                    "confidence_after": 0.9,
+                    "tool_calls": [
+                        {
+                            "tool_name": "weather_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        },
+                        {
+                            "tool_name": "traffic_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        }
+                    ],
+                    "duration_ms": 195,
+                    "timestamp": "2026-05-20T13:07:52.264421"
+                },
+                {
+                    "agent_name": "Decider",
+                    "step_type": "DECIDE",
+                    "reasoning": "Decider evaluated critical response criteria. Crisis type 'fire' with severity 0.92 warrants final decision: 'evacuate_and_dispatch_heavy_units'.",
+                    "inputs": {
+                        "fused_risk": 0.92,
+                        "analyst_confidence": 0.9
+                    },
+                    "output": {
+                        "decision": "evacuate_and_dispatch_heavy_units",
+                        "requires_review": false
+                    },
+                    "confidence_before": 0.9,
+                    "confidence_after": 0.95,
+                    "tool_calls": [],
+                    "duration_ms": 85,
+                    "timestamp": "2026-05-20T13:07:52.264421"
+                },
+                {
+                    "agent_name": "Executor",
+                    "step_type": "EXECUTE",
+                    "reasoning": "Executor initiated resource allocation for {'fire_trucks': 4, 'ambulances': 2, 'police': 3}. Dispatched 3 response broadcasts.",
+                    "inputs": {
+                        "allocation_plan": {
+                            "fire_trucks": 4,
+                            "ambulances": 2,
+                            "police": 3
+                        },
+                        "notifications": [
+                            {
+                                "target": "public",
+                                "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                            },
+                            {
+                                "target": "hospital",
+                                "message": "Prepare burn unit; inbound casualties possible."
+                            },
+                            {
+                                "target": "utility",
+                                "message": "Shut down gas mains in sectors adjacent to fire."
+                            }
+                        ]
+                    },
+                    "output": {
+                        "dispatch_status": "dispatched",
+                        "sent_alerts": 3
+                    },
+                    "confidence_before": 0.95,
+                    "confidence_after": 0.97,
+                    "tool_calls": [
+                        {
+                            "tool_name": "resource_dispatcher",
+                            "arguments": {
+                                "fire_trucks": 4,
+                                "ambulances": 2,
+                                "police": 3
+                            }
+                        },
+                        {
+                            "tool_name": "broadcast_manager",
+                            "arguments": {
+                                "notifications": [
+                                    {
+                                        "target": "public",
+                                        "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                                    },
+                                    {
+                                        "target": "hospital",
+                                        "message": "Prepare burn unit; inbound casualties possible."
+                                    },
+                                    {
+                                        "target": "utility",
+                                        "message": "Shut down gas mains in sectors adjacent to fire."
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "duration_ms": 140,
+                    "timestamp": "2026-05-20T13:07:52.264421"
+                },
+                {
+                    "agent_name": "Evaluator",
+                    "step_type": "EVALUATE",
+                    "reasoning": "Evaluator completed predictive simulation of the dispatch execution. ETA reduction: 15 min. Side effects: Heavy congestion on outbound arterial routes..",
+                    "inputs": {
+                        "simulation_context": {
+                            "eta_reduction_minutes": 15,
+                            "traffic_reroute": true,
+                            "side_effects": "Heavy congestion on outbound arterial routes."
+                        },
+                        "last_step_confidence": 0.97
+                    },
+                    "output": {
+                        "simulation_success": true,
+                        "network_stability_index": 0.94
+                    },
+                    "confidence_before": 0.97,
+                    "confidence_after": 0.99,
+                    "tool_calls": [
+                        {
+                            "tool_name": "simulator_engine",
+                            "arguments": {
+                                "eta_reduction_minutes": 15,
+                                "traffic_reroute": true,
+                                "side_effects": "Heavy congestion on outbound arterial routes."
+                            }
+                        }
+                    ],
+                    "duration_ms": 220,
+                    "timestamp": "2026-05-20T13:07:52.264421"
+                }
+            ]
+        }
+    },
+    {
+        "timestamp": "2026-05-20T08:08:07.722468Z",
+        "request": {
+            "context": {
+                "crisis_type": "fire",
+                "severity": 0.92,
+                "location": "33.6844,73.0479",
+                "weather": {
+                    "condition": "heavy rain",
+                    "intensity": 8,
+                    "temp_c": 22,
+                    "humidity": 85
+                },
+                "traffic": {
+                    "congestion": "high",
+                    "speed_kmh": 12,
+                    "incidents": [
+                        "accident at G-10"
+                    ]
+                },
+                "social_text": null,
+                "test_mode": false
+            }
+        },
+        "response": {
+            "antigravity_trace_id": "52ba4239-a6d4-44f8-b4e0-fef016568a7c",
+            "workplan": [
+                "classify",
+                "allocate",
+                "simulate",
+                "notify"
+            ],
+            "tool_calls": [
+                "weather_api",
+                "traffic_api",
+                "social_sentiment_api"
+            ],
+            "reasoning": "Analyzed fire event at 33.6844,73.0479 with severity 0.92. High risk of spread detected. Immediate intervention required.",
+            "final_decision": "evacuate_and_dispatch_heavy_units",
+            "allocation_plan": {
+                "fire_trucks": 4,
+                "ambulances": 2,
+                "police": 3
+            },
+            "simulation": {
+                "eta_reduction_minutes": 15,
+                "traffic_reroute": true,
+                "side_effects": "Heavy congestion on outbound arterial routes."
+            },
+            "notifications": [
+                {
+                    "target": "public",
+                    "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                },
+                {
+                    "target": "hospital",
+                    "message": "Prepare burn unit; inbound casualties possible."
+                },
+                {
+                    "target": "utility",
+                    "message": "Shut down gas mains in sectors adjacent to fire."
+                }
+            ],
+            "traces": [
+                {
+                    "agent_name": "Observer",
+                    "step_type": "OBSERVE",
+                    "reasoning": "Observer scanned visual feed and social text. Detected crisis keywords and YOLO confidence of 0.92.",
+                    "inputs": {
+                        "social_text": null,
+                        "location": "33.6844,73.0479",
+                        "yolo_severity": 0.92
+                    },
+                    "output": {
+                        "signals_fused": true,
+                        "raw_risk": 0.92
+                    },
+                    "confidence_before": 0.5,
+                    "confidence_after": 0.85,
+                    "tool_calls": [
+                        {
+                            "tool_name": "yolo_detector",
+                            "arguments": {
+                                "image": "uploaded_frame.jpg"
+                            }
+                        },
+                        {
+                            "tool_name": "social_analyzer",
+                            "arguments": {
+                                "query": null
+                            }
+                        }
+                    ],
+                    "duration_ms": 110,
+                    "timestamp": "2026-05-20T13:08:07.722468"
+                },
+                {
+                    "agent_name": "Analyst",
+                    "step_type": "ANALYZE",
+                    "reasoning": "Analyst correlated location weather (heavy rain) and traffic (high) with visual alert. Wind and traffic conditions analysis completed.",
+                    "inputs": {
+                        "weather": {
+                            "condition": "heavy rain",
+                            "intensity": 8,
+                            "temp_c": 22,
+                            "humidity": 85
+                        },
+                        "traffic": {
+                            "congestion": "high",
+                            "speed_kmh": 12,
+                            "incidents": [
+                                "accident at G-10"
+                            ]
+                        },
+                        "base_confidence": 0.85
+                    },
+                    "output": {
+                        "weather_influence": "neutral",
+                        "traffic_bottleneck": "high"
+                    },
+                    "confidence_before": 0.85,
+                    "confidence_after": 0.9,
+                    "tool_calls": [
+                        {
+                            "tool_name": "weather_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        },
+                        {
+                            "tool_name": "traffic_api",
+                            "arguments": {
+                                "location": "33.6844,73.0479"
+                            }
+                        }
+                    ],
+                    "duration_ms": 195,
+                    "timestamp": "2026-05-20T13:08:07.722468"
+                },
+                {
+                    "agent_name": "Decider",
+                    "step_type": "DECIDE",
+                    "reasoning": "Decider evaluated critical response criteria. Crisis type 'fire' with severity 0.92 warrants final decision: 'evacuate_and_dispatch_heavy_units'.",
+                    "inputs": {
+                        "fused_risk": 0.92,
+                        "analyst_confidence": 0.9
+                    },
+                    "output": {
+                        "decision": "evacuate_and_dispatch_heavy_units",
+                        "requires_review": false
+                    },
+                    "confidence_before": 0.9,
+                    "confidence_after": 0.95,
+                    "tool_calls": [],
+                    "duration_ms": 85,
+                    "timestamp": "2026-05-20T13:08:07.722468"
+                },
+                {
+                    "agent_name": "Executor",
+                    "step_type": "EXECUTE",
+                    "reasoning": "Executor initiated resource allocation for {'fire_trucks': 4, 'ambulances': 2, 'police': 3}. Dispatched 3 response broadcasts.",
+                    "inputs": {
+                        "allocation_plan": {
+                            "fire_trucks": 4,
+                            "ambulances": 2,
+                            "police": 3
+                        },
+                        "notifications": [
+                            {
+                                "target": "public",
+                                "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                            },
+                            {
+                                "target": "hospital",
+                                "message": "Prepare burn unit; inbound casualties possible."
+                            },
+                            {
+                                "target": "utility",
+                                "message": "Shut down gas mains in sectors adjacent to fire."
+                            }
+                        ]
+                    },
+                    "output": {
+                        "dispatch_status": "dispatched",
+                        "sent_alerts": 3
+                    },
+                    "confidence_before": 0.95,
+                    "confidence_after": 0.97,
+                    "tool_calls": [
+                        {
+                            "tool_name": "resource_dispatcher",
+                            "arguments": {
+                                "fire_trucks": 4,
+                                "ambulances": 2,
+                                "police": 3
+                            }
+                        },
+                        {
+                            "tool_name": "broadcast_manager",
+                            "arguments": {
+                                "notifications": [
+                                    {
+                                        "target": "public",
+                                        "message": "EMERGENCY: Evacuate 33.6844,73.0479 immediately due to severe fire."
+                                    },
+                                    {
+                                        "target": "hospital",
+                                        "message": "Prepare burn unit; inbound casualties possible."
+                                    },
+                                    {
+                                        "target": "utility",
+                                        "message": "Shut down gas mains in sectors adjacent to fire."
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "duration_ms": 140,
+                    "timestamp": "2026-05-20T13:08:07.722468"
+                },
+                {
+                    "agent_name": "Evaluator",
+                    "step_type": "EVALUATE",
+                    "reasoning": "Evaluator completed predictive simulation of the dispatch execution. ETA reduction: 15 min. Side effects: Heavy congestion on outbound arterial routes..",
+                    "inputs": {
+                        "simulation_context": {
+                            "eta_reduction_minutes": 15,
+                            "traffic_reroute": true,
+                            "side_effects": "Heavy congestion on outbound arterial routes."
+                        },
+                        "last_step_confidence": 0.97
+                    },
+                    "output": {
+                        "simulation_success": true,
+                        "network_stability_index": 0.94
+                    },
+                    "confidence_before": 0.97,
+                    "confidence_after": 0.99,
+                    "tool_calls": [
+                        {
+                            "tool_name": "simulator_engine",
+                            "arguments": {
+                                "eta_reduction_minutes": 15,
+                                "traffic_reroute": true,
+                                "side_effects": "Heavy congestion on outbound arterial routes."
+                            }
+                        }
+                    ],
+                    "duration_ms": 220,
+                    "timestamp": "2026-05-20T13:08:07.722468"
+                }
+            ]
+        }
     }
 ]
